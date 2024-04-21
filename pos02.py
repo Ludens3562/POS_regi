@@ -20,3 +20,10 @@ while True:
         each_product = str(gendata["product"].values[0])
         print(each_product + "は" + str(each_price) + "円です。")
         print(str(cnt) + "点で現在の合計" + str(sum_price) + "円です。")
+
+    if str(28) in barcode:
+        print(
+            "ポイントカード、ありがとうございます。お会計は"
+            + str(sum_price)
+            + "円になります。"
+        )
