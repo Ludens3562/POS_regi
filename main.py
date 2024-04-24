@@ -3,48 +3,97 @@ from decimal import Decimal, ROUND_HALF_UP
 
 dbname = "master.sqlite"
 
-
 def connect_db():
     return sqlite3.connect(dbname)
 
+def select_menu():
+    print("\n===業務選択===")
+    print("1.売上登録\n2.マスターメンテ\n3.ログオフ\n4.終了")
+    mode = input("業務選択：")
+    if mode == "1":
+        sales_register = SalesRegister()
+        sales_register.register_sales()
+    elif mode == "2":
+        if check_permission(staffCode, 1):
+            print("\n権限チェックOK")
+            master_maintenance()
+        else:
+            print("\n権限が足りません")
+            select_menu()
+    elif mode == "3":
+        print("ログオフしました\n\n\n\n\n")
+        logon()
+    elif mode == "4":
+        print("\nお疲れさまでした！")
+        exit
+    else:
+        print("\n無効な選択")
+        select_menu()
+        
 
-def register_sales():
-    price_total = 0
-    tax_total = 0
-    sub_total = 0
-    with connect_db() as conn:
-        cur = conn.cursor()
-        print("")
+class SalesRegister:
+    def __init__(self):
+        self.purchased_items = []
+
+    def input_barcode(self):
+        return input("JAN入力: ")
+
+    def register_sales(self):  # 商品の登録と会計の開始点
+        self.purchased_items = []
         while True:
-            barcode = input("JAN入力:")
+            barcode = self.input_barcode()
             if barcode == "":
-                # 消費税相当額の合計を四捨五入
-                # 本当は税率ごとに波数処理を行う
-                tax_total = Decimal(str(tax_total)).quantize(Decimal("0"), ROUND_HALF_UP)
-                sub_total = tax_total + price_total
-                print("\n消費税相当額:" + str(tax_total) + "円")
-                print("税抜き価格:" + str(price_total) + "円")
-                print("合計金額:" + str(sub_total) + "円")
-                while True:
-                    try:
-                        deposit = int(input("預かり金を入力: "))
-                        if deposit < sub_total:
-                            print("\n金額が不足しています")
-                        else:
-                            print("\nおつり: {}円".format(deposit - sub_total))
-                            print("---会計終了---")
-                            register_sales()
-                    except ValueError:
-                        print("\n無効な入力です。数字を入力してください。")
-            cur.execute("SELECT * FROM items WHERE JAN = ?", (barcode,))
-            row = cur.fetchone()
-            if row:
-                # 税率計算は積み上げ方式
-                tax_total += (row[3] / 100) * row[4]  # 税率乗数 x 税抜き価格 = 消費税相当額
-                price_total += row[4]
-                # sub_total = price_total + tax_total
+                if not self.purchased_items:
+                    print("商品が登録されていません。JANコードを入力してください\n")
+                    continue
+                tax_total, price_total, sub_total = self.calculate_totals()
+                print(f"\n消費税相当額: {tax_total}円")
+                print(f"税抜き価格: {price_total}円")
+                print(f"合計金額: {sub_total}円")
+
+                change = self.process_payment(sub_total)
+                print(f"\nおつり: {change}円")
+                print("---会計終了---")
+
+                self.update_stock()
+                self.register_sales()  # 再帰的に関数を呼び出して新たな販売処理を始める
+                return
             else:
-                print("該当するデータはありません")
+                self.purchased_items.append(barcode)
+
+    def calculate_totals(self):  # 合計金額の計算
+        tax_total = 0
+        price_total = 0
+        with connect_db() as conn:
+            for barcode in self.purchased_items:
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM items WHERE JAN = ?", (barcode,))
+                row = cur.fetchone()
+                if row:
+                    tax_total += (row[3] / 100) * row[4]
+                    price_total += row[4]
+        tax_total = Decimal(str(tax_total)).quantize(Decimal("0"), ROUND_HALF_UP)
+        sub_total = tax_total + price_total
+        return tax_total, price_total, sub_total
+
+    def process_payment(self, sub_total):  # 支払い処理
+        while True:
+            try:
+                deposit = int(input("預かり金を入力: "))
+                if deposit < sub_total:
+                    print("\n金額が不足しています")
+                else:
+                    return deposit - sub_total  # おつりを返す
+            except ValueError:
+                print("\n無効な入力です。数字を入力してください。")
+
+    def update_stock(self):  # 在庫の更新
+        with connect_db() as conn:
+            cur = conn.cursor()
+            for barcode in self.purchased_items:
+                cur.execute("UPDATE items SET stock = stock - 1 WHERE JAN = ?", (barcode,))
+            conn.commit()
+
 
 
 def logon():
@@ -76,30 +125,6 @@ def check_permission(staffCode, requireLevel):
             return None
 
 
-def select_menu():
-    print("\n===業務選択===")
-    print("1.売上登録\n2.マスターメンテ\n3.ログオフ\n4.終了")
-    mode = input("業務選択：")
-    if mode == "1":
-        register_sales()
-    elif mode == "2":
-        if check_permission(staffCode, 1):
-            print("\n権限チェックOK")
-            master_maintenance()
-        else:
-            print("\n権限が足りません")
-            select_menu()
-    elif mode == "3":
-        print("ログオフしました\n\n\n\n\n")
-        logon()
-    elif mode == "4":
-        print("\nお疲れさまでした！")
-        exit
-    else:
-        print("\n無効な選択")
-        select_menu()
-
-
 def master_maintenance():
     print("\n==マスターメンテナンスメニュー==")
     print("1.商品登録・変更\n2.登録削除\n3.入庫処理")
@@ -111,7 +136,7 @@ def master_maintenance():
     elif mode == "2":
         delete_item()
     elif mode == "3":
-        update_stock()
+        receive_stock()
 
 
 def update_item(cur, JAN):
@@ -221,7 +246,7 @@ def delete_item():
                 delete_item()
 
 
-def update_stock():
+def reveive_stock():
     print("\n=入庫処理=")
     with connect_db() as conn:
         cur = conn.cursor()
@@ -236,10 +261,10 @@ def update_stock():
                 stock_after = input("更新後在庫:")
                 cur.execute("UPDATE items SET stock = ? WHERE JAN = ?", (stock_after, JAN))
                 print("在庫数を更新しました")
-                update_stock()
+                reveive_stock()
             else:
                 print("該当するデータはありません")
-                update_stock()
+                reveive_stock()
 
 
 def main():
