@@ -8,6 +8,9 @@ def connect_db():
     return sqlite3.connect(dbname)
 
 
+global staffCode
+
+
 def register_sales():
     price_total = 0
     tax_total = 0
@@ -37,12 +40,45 @@ def register_sales():
                 print("該当するデータはありません")
 
 
+def logon():
+    with connect_db() as conn:
+        cur = conn.cursor()
+        staffCode = input("\n従業員CDを入力:")
+        cur.execute("SELECT * FROM staffs WHERE staffCode = ?", (staffCode,))
+        row = cur.fetchone()
+        if row:
+            print("\n" + row[2] + " としてログオン済み")
+            select_menu()
+        else:
+            print("無効な入力\n")
+            logon()
+
+
+def select_menu():
+    print("\n===業務選択===")
+    print("1.売上登録\n2.マスターメンテ\n3.ログオフ\n4.終了")
+    mode = input("業務選択：")
+    if mode == "1":
+        register_sales()
+    elif mode == "2":
+        master_maintenance()
+    elif mode == "3":
+        print("ログオフしました\n\n\n\n\n")
+        logon()
+    elif mode == "4":
+        print("\nお疲れさまでした！")
+        exit
+    else:
+        print("\n無効な選択")
+        select_menu()
+
+
 def master_maintenance():
     print("\n==マスターメンテナンスメニュー==")
     print("1.商品登録・変更\n2.登録削除\n3.入庫処理")
     mode = input("業務選択:")
     if mode == "":
-        main()
+        select_menu()
     elif mode == "1":
         register_or_update_item()
     elif mode == "2":
@@ -180,19 +216,7 @@ def update_stock():
 
 
 def main():
-    print("\n===業務選択===")
-    print("1.売上登録\n2.マスターメンテ\n3.終了")
-    mode = input("業務選択：")
-    if mode == "1":
-        register_sales()
-    elif mode == "2":
-        master_maintenance()
-    elif mode == "3":
-        print("\nお疲れさまでした！")
-        exit
-    else:
-        print("\n無効な選択")
-        main()
+    logon()
 
 
 if __name__ == "__main__":
