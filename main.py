@@ -8,9 +8,6 @@ def connect_db():
     return sqlite3.connect(dbname)
 
 
-global staffCode
-
-
 def register_sales():
     price_total = 0
     tax_total = 0
@@ -28,7 +25,17 @@ def register_sales():
                 print("\n消費税相当額:" + str(tax_total) + "円")
                 print("税抜き価格:" + str(price_total) + "円")
                 print("合計金額:" + str(sub_total) + "円")
-                register_sales()
+                while True:
+                    try:
+                        deposit = int(input("預かり金を入力: "))
+                        if deposit < sub_total:
+                            print("\n金額が不足しています")
+                        else:
+                            print("\nおつり: {}円".format(deposit - sub_total))
+                            print("---会計終了---")
+                            register_sales()
+                    except ValueError:
+                        print("\n無効な入力です。数字を入力してください。")
             cur.execute("SELECT * FROM items WHERE JAN = ?", (barcode,))
             row = cur.fetchone()
             if row:
@@ -43,6 +50,7 @@ def register_sales():
 def logon():
     with connect_db() as conn:
         cur = conn.cursor()
+        global staffCode
         staffCode = input("\n従業員CDを入力:")
         cur.execute("SELECT * FROM staffs WHERE staffCode = ?", (staffCode,))
         row = cur.fetchone()
@@ -54,6 +62,20 @@ def logon():
             logon()
 
 
+def check_permission(staffCode, requireLevel):
+    with connect_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT permission FROM staffs WHERE staffCode = ?", (staffCode,))
+        row = cur.fetchone()
+        if row:
+            if row[0] <= requireLevel:
+                return True
+            elif row[0] > requireLevel:
+                return False
+        else:
+            return None
+
+
 def select_menu():
     print("\n===業務選択===")
     print("1.売上登録\n2.マスターメンテ\n3.ログオフ\n4.終了")
@@ -61,7 +83,12 @@ def select_menu():
     if mode == "1":
         register_sales()
     elif mode == "2":
-        master_maintenance()
+        if check_permission(staffCode, 1):
+            print("\n権限チェックOK")
+            master_maintenance()
+        else:
+            print("\n権限が足りません")
+            select_menu()
     elif mode == "3":
         print("ログオフしました\n\n\n\n\n")
         logon()
@@ -93,7 +120,7 @@ def update_item(cur, JAN):
     print("2: 税率")
     print("3: 税抜価格")
     print("4: 初期在庫")
-    choice = input("選択: ")
+    choice = input("選択:")
 
     # 現在の値を取得し、表示するためのSQLクエリを実行
     cur.execute("SELECT name, JAN, tax, price, stock FROM items WHERE JAN = ?", (JAN,))
@@ -130,7 +157,7 @@ def update_item(cur, JAN):
         update_item(cur, item[1])
 
 
-def register_or_update_item():
+def register_or_update_item():  # 既知の不具合：商品情報を空欄で更新した後に同一商品の要素を変更しようとすると、現在の値が正常に表示されない
     print("\n=商品登録・変更=")
     with connect_db() as conn:
         cur = conn.cursor()
