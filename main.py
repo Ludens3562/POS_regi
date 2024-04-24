@@ -1,4 +1,5 @@
 import sqlite3
+from decimal import Decimal, ROUND_HALF_UP
 
 dbname = "master.sqlite"
 
@@ -8,21 +9,32 @@ def connect_db():
 
 
 def register_sales():
-    total = 0
+    price_total = 0
+    tax_total = 0
+    sub_total = 0
     with connect_db() as conn:
         cur = conn.cursor()
+        print("")
         while True:
             barcode = input("JAN入力:")
             if barcode == "":
-                print("total:" + str(total))
+                # 消費税相当額の合計を四捨五入
+                # 本当は税率ごとに波数処理を行う
+                tax_total = Decimal(str(tax_total)).quantize(Decimal("0"), ROUND_HALF_UP)
+                sub_total = tax_total + price_total
+                print("\n消費税相当額:" + str(tax_total) + "円")
+                print("税抜き価格:" + str(price_total) + "円")
+                print("合計金額:" + str(sub_total) + "円")
                 register_sales()
             cur.execute("SELECT * FROM items WHERE JAN = ?", (barcode,))
             row = cur.fetchone()
             if row:
-                # print(str(row[4]))
-                total += row[4]
+                # 税率計算は積み上げ方式
+                tax_total += (row[3] / 100) * row[4]  # 税率乗数 x 税抜き価格 = 消費税相当額
+                price_total += row[4]
+                # sub_total = price_total + tax_total
             else:
-                print("該当するデータはありません。")
+                print("該当するデータはありません")
 
 
 def master_maintenance():
@@ -78,7 +90,7 @@ def update_item(cur, JAN):
     elif choice == "":
         register_or_update_item()
     else:
-        print("無効な選択です。")
+        print("無効な選択")
         update_item(cur, item[1])
 
 
@@ -109,10 +121,10 @@ def register_or_update_item():
                         "INSERT INTO items(JAN, name, tax, price, stock) values(?, ?, ?, ?, ?)",
                         (JAN, name, tax, price, stock),
                     )
-                    print("商品情報を登録しました。")
+                    print("商品情報を登録しました")
                     master_maintenance()
                 else:
-                    print("商品情報の登録をキャンセルしました。")
+                    print("商品情報の登録をキャンセルしました")
                     master_maintenance()
             conn.commit()
 
@@ -133,10 +145,10 @@ def delete_item():
                     f"\n登録情報:\nJAN: {row[1]}\n商品名: {row[2]}\n税率: {row[3]}\n税抜価格: {row[4]}\n在庫数: {row[5]}\n"
                 )
                 confirm = input("上記の登録情報を削除しますか？(Y/n): ")
-                if confirm.lower() == "y":
+                if confirm.lower() == "y" or confirm == "":
                     cur.execute("DELETE FROM items WHERE JAN = ?", (JAN,))
                     conn.commit()
-                    print("データを削除しました。")
+                    print("データを削除しました")
                     delete_item()
                 else:
                     print("データの削除をキャンセルしました")
