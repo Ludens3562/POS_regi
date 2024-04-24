@@ -18,3 +18,14 @@
 - 保留機能 → 画像解析からの商品カート代わりにも使えるような機能<br>
 - 権限制御の充実<br>
 - 一括出荷　入荷システム<br>
+<br>
+DBの中身見るならこれいれると便利になると思う<br>
+
+```
+名前: SQLite Viewer
+ID: qwtel.sqlite-viewer
+説明: SQLite Viewer for VSCode
+バージョン: 0.3.13
+パブリッシャー: Florian Klampfer
+VS Marketplace リンク: https://marketplace.visualstudio.com/items?itemName=qwtel.sqlite-viewer
+```
