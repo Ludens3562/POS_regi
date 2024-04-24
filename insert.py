@@ -51,6 +51,21 @@ def insert_permissions_data(cur):
         permissions_data,
     )
 
+# 【実装予定】itemsDataに入力する前にチェックディジットをチェックする
+def is_valid_jan_code(jan_code_str):
+    def calculate_checksum(numbers):
+        accumulated_sum, multiplier = 0, 3
+        for number in reversed(numbers):
+            accumulated_sum += int(number) * multiplier
+            multiplier = 1 if multiplier == 3 else 3
+        return accumulated_sum
+
+    numbers = list(jan_code_str[:-1])  # JANコードからチェックディジットを除いたリスト
+    expected_cd = calculate_checksum(numbers) % 10
+    expected_cd = 10 - expected_cd if expected_cd != 0 else 0
+    actual_cd = int(jan_code_str[-1])  # 入力されたJANコードのチェックディジット
+
+    return expected_cd == actual_cd
 
 def insert_items_data(cur):
     items_data = [
