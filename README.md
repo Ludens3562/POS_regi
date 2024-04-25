@@ -1,7 +1,7 @@
 # POSシステム概要
 
 ## システム起動方法
-①【データベースが存在しない場合】insert.pyを実行し、データベースファイルmaster.sqliteを作成する<br>
+①【データベースが存在しない場合】insert.pyとcreate_HistoryDB.pyを実行し、データベースファイルmaster.sqliteとsalesHistory.sqliteを作成する<br>
 ②main.pyを実行しログインする（従業員CDは「11112」から１０人分作成されている）<br>
 ③レジを打つ<br>
 ### 詳細仕様<br>
@@ -11,7 +11,7 @@
 <br><br>
 
 ## 実装予定（だいたい優先度順）<br>
-- ジャーナル機能<br>
+- ~~ジャーナル機能~~<br>
 - 返品機能<br>
 - csv取り込み<br>
    ↳差分更新機能<br>
