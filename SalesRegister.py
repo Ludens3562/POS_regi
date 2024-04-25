@@ -18,9 +18,6 @@ class SalesRegister:
     def __init__(self):
         self.db_connector = DatabaseConnector()
         self.purchased_items = []
-        self.staffCode = g.staffCode
-        self.sales_type = 1
-        self.purchase_points = 0
 
     def is_barcode_valid(self, barcode):
         with self.db_connector.connect() as conn:
@@ -47,16 +44,19 @@ class SalesRegister:
                 print("無効な入力\n")
 
     def complete_sales(self):
+        sales_type = 1 # 1: 通常売上 2.返品
         if not self.purchased_items:
             print("商品が登録されていません。JANコードを入力してください\n")
             self.register_sales()
             return
         tax_total, price_total, sub_total = self.calculate_totals()
+        purchase_points = len(self.purchased_items)
+        print(f"\n点数： {purchase_points}点")
         print(f"税抜き価格: {price_total}円\n消費税相当額: {tax_total}円\n合計金額: {sub_total}円")
         change, deposit = self.process_payment(sub_total)
         print(f"\nお釣り: {change}円\n---会計終了---\n")
         self.update_stock()
-        self.register_transaction(self.sales_type, datetime, self.staffCode, self.purchase_points, tax_total, price_total, sub_total, deposit, change)
+        self.register_transaction(sales_type, datetime, g.staffCode, purchase_points, tax_total, price_total, sub_total, deposit, change)
         self.register_sales()
 
     def calculate_totals(self):
