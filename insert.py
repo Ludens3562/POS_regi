@@ -37,20 +37,6 @@ def create_tables(cur):
     )
 
 
-def insert_permissions_data(cur):
-    permissions_data = [
-        (1, "SystemAdmin"),
-        (2, "Reserved1"),
-        (3, "StoreManager"),
-        (4, "Reserved2"),
-        (5, "A_Staff"),
-        (6, "B_Staff"),
-    ]
-    cur.executemany(
-        "INSERT INTO permissions(permission_level, permission_name) values (?, ?)",
-        permissions_data,
-    )
-
 # 【実装予定】itemsDataに入力する前にチェックディジットをチェックする
 def is_valid_jan_code(jan_code_str):
     def calculate_checksum(numbers):
@@ -67,7 +53,7 @@ def is_valid_jan_code(jan_code_str):
 
     return expected_cd == actual_cd
 
-def insert_items_data(cur):
+def upsert_items_data(cur):
     items_data = [
         (4953103254350, "EDT-TMEX10", 10, 1562, 10),
         (4901411133157, "ｷﾘﾝ晴れ風缶350ml×6", 8, 1014, 10),
@@ -166,13 +152,28 @@ def insert_items_data(cur):
         (4973480346844, "CYTﾌﾛﾝﾃﾗｽﾊﾟｰｸﾘﾝｸﾞ缶280ml", 8, 299, 10),
         (4901880210847, "ｸﾗﾌﾄｽﾊﾟｲｽｿｰﾀﾞ旬の彩り缶350ml", 8, 114, 10),
     ]
-    cur.executemany(
-        "INSERT INTO items(JAN, name, tax, price, stock) values (?, ?, ?, ?, ?)",
-        items_data,
-    )
+    for item in items_data:
+        # 既存データの更新
+        cur.execute(
+            """
+            UPDATE items
+            SET name = ?, tax = ?, price = ?, stock = ?
+            WHERE JAN = ?
+            """,
+            (item[1], item[2], item[3], item[4], item[0])
+        )
+        # 更新された行がなければ、新規挿入
+        if cur.rowcount == 0:
+            cur.execute(
+                """
+                INSERT INTO items (JAN, name, tax, price, stock)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                item
+            )
 
 
-def insert_staffs_data(cur):
+def upsert_staffs_data(cur):
     staffs_data = [
         (11112, "テストユーザー1", "password1", 1),
         (11113, "テストユーザー2", "password2", 3),
@@ -185,11 +186,47 @@ def insert_staffs_data(cur):
         (11120, "テストユーザー9", "password9", 6),
         (11121, "テストユーザー10", "password10", 6),
     ]
-    cur.executemany(
-        "INSERT INTO staffs(staffCode, name, password, permission) values (?, ?, ?, ?)",
-        staffs_data,
-    )
+    for staff in staffs_data:
+        # 既存データの更新
+        cur.execute(
+            """
+            UPDATE staffs
+            SET name = ?, password = ?, permission = ?
+            WHERE staffCode = ?
+            """,
+            (staff[1], staff[2], staff[3], staff[0])
+        )
+        # 更新された行がなければ、新規挿入
+        if cur.rowcount == 0:
+            cur.execute(
+                """
+                INSERT INTO staffs (staffCode, name, password, permission)
+                VALUES (?, ?, ?, ?)
+                """,
+                staff
+            )
 
+def upsert_permissions_data(cur):
+    permissions_data = [
+        (1, "SystemAdmin"),
+        (2, "Reserved1"),
+        (3, "StoreManager"),
+        (4, "Reserved2"),
+        (5, "A_Staff"),
+        (6, "B_Staff"),
+    ]
+    for permission_level, permission_name in permissions_data:
+        # まず、UPDATEを試みる
+        cur.execute(
+            "UPDATE permissions SET permission_name = ? WHERE permission_level = ?",
+            (permission_name, permission_level),
+        )
+        # 更新が行われなかった場合、INSERTを試みる
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO permissions(permission_level, permission_name) VALUES (?, ?)",
+                (permission_level, permission_name),
+            )
 
 def setup_database():
     try:
@@ -201,9 +238,9 @@ def setup_database():
             cur.execute("BEGIN TRANSACTION")
 
             create_tables(cur)
-            insert_permissions_data(cur)
-            insert_items_data(cur)
-            insert_staffs_data(cur)
+            upsert_permissions_data(cur)
+            upsert_items_data(cur)
+            upsert_staffs_data(cur)
 
             conn.commit()
             print("Successfully setup the database!")
