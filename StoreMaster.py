@@ -1,10 +1,8 @@
 import sqlite3
 
 dbname = "master.sqlite"
-
 def connect_db():
     return sqlite3.connect(dbname)
-
 
 class StoreMaster:
     def maintenance_page(self):
@@ -31,40 +29,35 @@ class StoreMaster:
             choice = input("選択:")
             self.cur.execute("SELECT name, JAN, tax, price, stock FROM items WHERE JAN = ?", (JAN,))
             item = self.cur.fetchone()
-
             if choice == "1":
                 print(f"\n現在の商品名: {item[0]}")
                 name = input("新しい商品名: ")
                 self.cur.execute("UPDATE items SET name = ? WHERE JAN = ?", (name, JAN))
                 conn.commit()
                 print("商品名を更新しました")
-                self.update_item(item[1])
             elif choice == "2":
                 print(f"\n現在の税率: {item[2]}")
                 tax = input("新しい税率: ")
                 self.cur.execute("UPDATE items SET tax = ? WHERE JAN = ?", (tax, JAN))
                 conn.commit()
                 print("税率を更新しました")
-                self.update_item(item[1])
             elif choice == "3":
                 print(f"\n現在の税抜価格: {item[3]}")
                 price = input("新しい税抜価格: ")
                 self.cur.execute("UPDATE items SET price = ? WHERE JAN = ?", (price, JAN))
                 conn.commit()
                 print("税抜き価格を更新しました")
-                self.update_item(item[1])
             elif choice == "4":
                 print(f"\n現在の在庫数: {item[4]}")
                 stock = input("新しい在庫数: ")
                 self.cur.execute("UPDATE items SET stock = ? WHERE JAN = ?", (stock, JAN))
                 conn.commit()
                 print("在庫数を更新しました")
-                self.update_item(item[1])
             elif choice == "":
                 self.register_or_update_item()
             else:
                 print("無効な選択")
-                self.update_item(item[1])
+            self.update_item(item[1])
 
     def register_or_update_item(self):
         print("\n=商品登録・変更=")
@@ -98,7 +91,6 @@ class StoreMaster:
                 else:
                     print("商品情報の登録をキャンセルしました")
                     self.maintenance_page()
-
 
     def delete_item(self):
         print("\n=登録削除=")
