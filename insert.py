@@ -37,7 +37,6 @@ def create_tables(cur):
     )
 
 
-# 【実装予定】itemsDataに入力する前にチェックディジットをチェックする
 def is_valid_jan_code(jan_code_str):
     def calculate_checksum(numbers):
         accumulated_sum, multiplier = 0, 3
@@ -150,28 +149,30 @@ def upsert_items_data(cur):
         (4962840968369, "JｰCRAFTTRIP日向夏ｻﾜｰ350ml", 8, 140, 10),
         (4901880210854, "ｸﾗﾌﾄｽﾊﾟｲｽｿｰﾀﾞ旬の彩り缶500ml", 8, 151, 10),
         (4973480346844, "CYTﾌﾛﾝﾃﾗｽﾊﾟｰｸﾘﾝｸﾞ缶280ml", 8, 299, 10),
-        (4901880210847, "ｸﾗﾌﾄｽﾊﾟｲｽｿｰﾀﾞ旬の彩り缶350ml", 8, 114, 10),
+        (4901880210846, "ｸﾗﾌﾄｽﾊﾟｲｽｿｰﾀﾞ旬の彩り缶350ml", 8, 114, 10),
     ]
     for item in items_data:
-        # 既存データの更新
-        cur.execute(
-            """
-            UPDATE items
-            SET name = ?, tax = ?, price = ?, stock = ?
-            WHERE JAN = ?
-            """,
-            (item[1], item[2], item[3], item[4], item[0])
-        )
-        # 更新された行がなければ、新規挿入
-        if cur.rowcount == 0:
+        jan_code_str = str(item[0])
+        if is_valid_jan_code(jan_code_str):
+            # JANコードのチェックディジットチェック
             cur.execute(
                 """
-                INSERT INTO items (JAN, name, tax, price, stock)
-                VALUES (?, ?, ?, ?, ?)
+                UPDATE items
+                SET name = ?, tax = ?, price = ?, stock = ?
+                WHERE JAN = ?
                 """,
-                item
+                (item[1], item[2], item[3], item[4], item[0])
             )
-
+            if cur.rowcount == 0:
+                cur.execute(
+                    """
+                    INSERT INTO items (JAN, name, tax, price, stock)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    item
+                )
+        else:
+            print(f"不正なJANコードのため、データの挿入をスキップします\nJAN:{jan_code_str}")
 
 def upsert_staffs_data(cur):
     staffs_data = [
