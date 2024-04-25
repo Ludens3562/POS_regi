@@ -1,6 +1,6 @@
 import sqlite3
 from SalesRegister import SalesRegister
-from InventoryManagement import InventoryManagement
+from StoreMaster import StoreMaster
 
 dbname = "master.sqlite"
 
@@ -15,10 +15,10 @@ def top_page():
         sales_register = SalesRegister()
         sales_register.register_sales()
     elif mode == "2":
-        Inventory_Management = InventoryManagement()
+        Store_Master = StoreMaster()
         if check_permission(staffCode, 1):
             print("\n権限チェックOK")
-            Inventory_Management.maintenance_page()
+            Store_Master.maintenance_page()
         else:
             print("\n権限が足りません")
             top_page()

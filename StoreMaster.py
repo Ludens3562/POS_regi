@@ -6,7 +6,7 @@ def connect_db():
     return sqlite3.connect(dbname)
 
 
-class InventoryManagement:
+class StoreMaster:
     def maintenance_page(self):
         print("\n==マスターメンテナンスメニュー==")
         print("1.商品登録・変更\n2.登録削除\n3.入庫処理")
