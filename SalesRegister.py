@@ -1,6 +1,7 @@
 import sqlite3
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
+import global_value as g
 
 class DatabaseConnector:
     def __init__(self):
@@ -15,11 +16,10 @@ class DatabaseConnector:
 
 class SalesRegister:
     def __init__(self):
-        # DatabaseConnectorのインスタンスを直接作成
         self.db_connector = DatabaseConnector()
         self.purchased_items = []
+        self.staffCode = g.staffCode
         self.sales_type = 1
-        self.staffCode = 11112
         self.purchase_points = 0
 
     def is_barcode_valid(self, barcode):

@@ -1,11 +1,9 @@
-import sqlite3
 from SalesRegister import SalesRegister
 from StoreMaster import StoreMaster
+from auth import Authentication
+import global_value as g
 
-dbname = "master.sqlite"
-
-def connect_db():
-    return sqlite3.connect(dbname)
+auth = Authentication()
 
 def top_page():
     print("\n===業務選択===")
@@ -16,15 +14,15 @@ def top_page():
         sales_register.register_sales()
     elif mode == "2":
         Store_Master = StoreMaster()
-        if check_permission(staffCode, 1):
+        if auth.check_permission(g.staffCode, 1):
             print("\n権限チェックOK")
             Store_Master.maintenance_page()
         else:
             print("\n権限が足りません")
             top_page()
     elif mode == "3":
-        print("ログオフしました\n\n\n\n\n")
-        logon()
+        auth.logoff()
+        main()
     elif mode == "4":
         print("\nお疲れさまでした！")
         exit
@@ -32,39 +30,9 @@ def top_page():
         print("\n無効な選択")
         top_page()
 
-
-def logon():
-    with connect_db() as conn:
-        cur = conn.cursor()
-        global staffCode
-        staffCode = input("\n従業員CDを入力:")
-        cur.execute("SELECT * FROM staffs WHERE staffCode = ?", (staffCode,))
-        row = cur.fetchone()
-        if row:
-            print("\n" + row[2] + " としてログオン済み")
-            top_page()
-        else:
-            print("無効な入力\n")
-            logon()
-
-
-def check_permission(staffCode, requireLevel):
-    with connect_db() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT permission FROM staffs WHERE staffCode = ?", (staffCode,))
-        row = cur.fetchone()
-        if row:
-            if row[0] <= requireLevel:
-                return True
-            elif row[0] > requireLevel:
-                return False
-        else:
-            return None
-
-
 def main():
-    logon()
-
+    auth.logon()
+    top_page()
 
 if __name__ == "__main__":
     main()
