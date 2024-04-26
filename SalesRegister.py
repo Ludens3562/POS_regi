@@ -164,7 +164,7 @@ class SalesRegister:
                     )
 
                 # トランザクションテーブルにマイナスデータを入力
-                self.register_negative_transaction(transaction_id, conn)
+                self.register_full_negative_transaction(transaction_id, conn)
 
                 conn.commit()
             except Exception as e:
@@ -174,18 +174,21 @@ class SalesRegister:
     def partial_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
             cur = conn.cursor()
-            # tax_rate と base_price を取得するようにクエリを修正
+            # 指定トランザクションID内の取引商品をすべて取得
             cur.execute(
                 "SELECT id, JAN, product_name, unit_price, tax_rate, amount FROM sales_item WHERE transaction_id = ?",
                 (transaction_id,),
             )
-            items = cur.fetchall()
+            items = cur.fetchall()  # 全データをリストに格納
 
             print("返品する商品を選んでください:")
-            for i, item in enumerate(items, 1):
+            for i, item in enumerate(items, 1):  # items内のリストを列挙し、必要データにフォーマット
                 print(f"{i}. {item[2]} (金額: {item[3]}円)")
 
-            selected_items = input("返品する商品番号をカンマ区切りで入力してください（例: 1,3）: ")
+            selected_items = input(
+                "返品する商品番号をカンマ区切りで入力してください（例: 1,3）: "
+            )  # 返品対象のインデックス番号を収納
+            # selected_itemsのカンマ区切りの文字列を分割し、0始まりのインデックスリストに変換
             selected_indexes = [int(x) - 1 for x in selected_items.split(",")]
 
             try:
@@ -197,50 +200,76 @@ class SalesRegister:
                     )
 
                 # トランザクションテーブルにマイナスデータを入力
-                self.register_negative_transaction(transaction_id, conn, partial=True)
+                self.register_partial_negative_transaction(transaction_id, conn)
 
                 conn.commit()
             except Exception as e:
                 conn.rollback()
                 print("返品処理に失敗しました。", e)
 
-    def register_negative_transaction(self, transaction_id, conn, partial=False):
+    def register_partial_negative_transaction(self, transaction_id, conn):
         cur = conn.cursor()
-        if partial:
-            # 一部返品の場合、返金額を計算する必要がある
-            cur.execute("SELECT sum(amount) FROM sales_item WHERE transaction_id = ? AND amount < 0", (transaction_id,))
-            refund_amount = -cur.fetchone()[0]  # マイナスの合計値を正の値に変換
+        # 返品された商品の返金基礎額（税抜き）を計算
+        cur.execute(
+            "SELECT unit_price FROM sales_item WHERE transaction_id = ?",
+            (transaction_id,),
+        )
+        refund_base_price = -cur.fetchone()[0]
 
-            # purchase_points, total_tax_amount, total_base_priceを計算する必要がある
-            cur.execute(
-                """
-                SELECT purchase_points, total_tax_amount, total_base_price FROM Transactions WHERE transaction_id = ?
-            """,
-                (transaction_id,),
-            )
-            original_values = cur.fetchone()
-            purchase_points = -original_values[0] * (refund_amount / original_values[2])
-            total_tax_amount = -original_values[1] * (refund_amount / original_values[2])
-            total_base_price = -refund_amount
-        else:
-            # 全返品の場合、元のトランザクションから値を取得
-            cur.execute(
-                """
-                SELECT purchase_points, total_tax_amount, total_base_price, total_amount 
-                FROM Transactions WHERE transaction_id = ?
-            """,
-                (transaction_id,),
-            )
-            row = cur.fetchone()
-            purchase_points = -row[0]
-            total_tax_amount = -row[1]
-            total_base_price = -row[2]
-            refund_amount = row[3]
+        # 返品された商品にかかる税金の合計額を計算
+        cur.execute(
+            "SELECT sum((unit_price * (tax_rate / 100.0 + 1)) * amount) - sum(unit_price * amount) FROM sales_item WHERE transaction_id = ? AND amount < 0",
+            (transaction_id,),
+        )
+        refund_tax_amount = -cur.fetchone()[0]
+
+        # 返金額（税込み）を計算
+        refund_amount = refund_base_price + refund_tax_amount
+
+        # 元のトランザクションに関する情報を取得
+        cur.execute(
+            """
+            SELECT purchase_points, total_tax_amount, total_base_price FROM Transactions WHERE transaction_id = ?
+        """,
+            (transaction_id,),
+        )
+        original_values = cur.fetchone()
+        original_total_amount = original_values[1] + original_values[2]
+        refund_ratio = refund_amount / original_total_amount
+
+        purchase_points = -original_values[0] * refund_ratio
+        total_tax_amount = -refund_tax_amount
+        total_base_price = -refund_base_price
 
         # マイナスのトランザクションを登録
+        register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, refund_amount, conn)
+
+    def register_full_negative_transaction(self, transaction_id, conn):
+        cur = conn.cursor()
+        # 元のトランザクションから値を取得
         cur.execute(
-            """INSERT INTO Transactions (sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change)
-                    VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)""",
-            (2, g.staffCode, purchase_points, total_tax_amount, total_base_price, refund_amount, 0, refund_amount),
+            """
+            SELECT purchase_points, total_tax_amount, total_base_price, total_amount 
+            FROM Transactions WHERE transaction_id = ?
+        """,
+            (transaction_id,),
         )
-        print(f"返金額: {refund_amount}円")
+        row = cur.fetchone()
+
+        purchase_points = -row[0]
+        total_tax_amount = -row[1]
+        total_base_price = -row[2]
+        refund_amount = row[3]
+
+        # マイナスのトランザクションを登録
+        register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, refund_amount, conn)
+
+
+def register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, total_amount, conn):
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO Transactions (sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change)
+                VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)""",
+        (2, g.staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, 0, total_amount),
+    )
+    print(f"返金額: {total_amount}円")
