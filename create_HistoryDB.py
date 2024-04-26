@@ -2,6 +2,7 @@ import sqlite3
 
 dbname = "salesHistory.sqlite"
 
+
 def create_tables(cur):
     cur.execute(
         """
@@ -22,6 +23,7 @@ def create_tables(cur):
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS `sales_item` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT,
             `transaction_id` INTEGER NOT NULL,
             `JAN` INTEGER,
             `product_name` TEXT,
@@ -32,6 +34,7 @@ def create_tables(cur):
         )
         """
     )
+
 
 def setup_database():
     try:
@@ -44,5 +47,6 @@ def setup_database():
             print("Successfully setup the database!")
     except sqlite3.Error as e:
         print(f"An error occurred: {e}")
+
 
 setup_database()
