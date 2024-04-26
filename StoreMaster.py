@@ -1,13 +1,21 @@
 import sqlite3
+import getpass
+from auth import Authentication
+import global_value as g
+
+auth = Authentication()
 
 dbname = "master.sqlite"
+
+
 def connect_db():
     return sqlite3.connect(dbname)
+
 
 class StoreMaster:
     def maintenance_page(self):
         print("\n==マスターメンテナンスメニュー==")
-        print("1.商品登録・変更\n2.登録削除\n3.入庫処理")
+        print("1.商品登録・変更\n2.登録削除\n3.入庫処理\n4.スタッフマスター")
         mode = input("業務選択:")
         if mode == "":
             pass
@@ -17,6 +25,8 @@ class StoreMaster:
             self.delete_item()
         elif mode == "3":
             self.receive_stock()
+        elif mode == "4":
+            self.update_staff_info()
         else:
             print("無効な選択です。")
             self.maintenance_page()
@@ -77,7 +87,7 @@ class StoreMaster:
                 tax = input("税率:")
                 price = input("税抜価格:")
                 stock = input("初期在庫:")
-                
+
                 print(f"\n登録情報:\nJAN: {JAN}\n商品名: {name}\n税率: {tax}\n税抜価格: {price}\n初期在庫: {stock}\n")
                 confirm = input("上記の情報で登録しますか？(Y/n): ")
                 if confirm.lower() == "y" or confirm == "":
@@ -134,3 +144,54 @@ class StoreMaster:
             else:
                 print("該当するデータはありません")
                 self.receive_stock()
+
+    def update_staff_info(self):
+        print("\n==スタッフ情報変更==")
+        with connect_db() as conn:
+            cur = conn.cursor()
+            staff_code = input("変更するスタッフコード:")
+            if staff_code == "":
+                self.maintenance_page()
+            elif staff_code == g.staffCode:
+                print("自分自身の情報は変更できません")
+                self.update_staff_info()
+            else:
+                cur.execute("SELECT permission FROM staffs WHERE staffCode = ?", (g.staffCode,))
+                current_staff_permission = cur.fetchone()
+                cur.execute("SELECT * FROM staffs WHERE staffCode = ?", (staff_code,))
+                staff = cur.fetchone()
+                if not staff:
+                    print("該当するスタッフ情報はありません")
+                    self.update_staff_info()
+                if int(staff[4]) <= int(current_staff_permission[0]):
+                    print("変更権限がありません")
+                    self.update_staff_info()
+                print(f"スタッフ名: {staff[2]}\nパスワード:******\n権限: {staff[4]}\n")
+                print("変更したい情報を選択してください:")
+                print("1.スタッフ名")
+                print("2.パスワード")
+                print("3.権限\n")
+                choice = input("選択:")
+                if choice == "":
+                    self.update_staff_info()
+                elif choice == "1":
+                    print(f"現在のスタッフ名: {staff[2]}")
+                    new_name = input("\n新しいスタッフ名:")
+                    cur.execute("UPDATE staffs SET name = ? WHERE staffCode = ?", (new_name, staff_code))
+                elif choice == "2":
+                    new_password = getpass.getpass("\n新しいパスワード:")
+                    cur.execute("UPDATE staffs SET password = ? WHERE staffCode = ?", (new_password, staff_code))
+                elif choice == "3":
+                    print(f"現在の権限: {staff[4]}")
+                    new_permission = input("\n新しい権限:")
+                    if int(new_permission) <= int(current_staff_permission[0]):
+                        print("自分より低い権限のみ割り当て可能です")
+                        self.update_staff_info()
+                    cur.execute("UPDATE staffs SET permission = ? WHERE staffCode = ?", (new_permission, staff_code))
+                else:
+                    print("無効な選択肢です。")
+                    return
+
+                conn.commit()
+                print("スタッフ情報を更新しました")
+                self.update_staff_info()
