@@ -1,10 +1,12 @@
 import sqlite3
 import csv
+from pathlib import Path
 
 dbname = "master.sqlite"
 
 
 def create_tables(cur):
+    cur.execute("BEGIN TRANSACTION")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS items(
@@ -20,7 +22,7 @@ def create_tables(cur):
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS permissions(
-            permission_level INTEGER PRIMARY KEY NOT NULL UNIQUE,
+            permission_level INTEGER PRIMARY KEY,
             permission_name TEXT)
         """
     )
@@ -32,10 +34,10 @@ def create_tables(cur):
             staffCode INTEGER NOT NULL UNIQUE,
             name TEXT,
             password TEXT,
-            permission INTEGER,
-            FOREIGN KEY(permission) REFERENCES permissions(permission_level))
+            permission INTEGER)
         """
     )
+    cur.execute("COMMIT TRANSACTION")
 
 
 def is_valid_jan_code(jan_code_str):
@@ -134,13 +136,13 @@ def setup_database():
         with sqlite3.connect(dbname) as conn:
             cur = conn.cursor()
             cur.execute("PRAGMA foreign_keys = ON")
-            cur.execute("BEGIN TRANSACTION")
 
             create_tables(cur)
             upsert_permissions_data(cur)
+            conn.commit()
 
-            cur.execute("COMMIT TRANSACTION")
             print("データベースのセットアップが完了しました！")
+
     except sqlite3.Error as e:
         cur.execute("ROLLBACK TRANSACTION")
         print(f"データベースセットアップ中にエラーが発生しました: {e}")
