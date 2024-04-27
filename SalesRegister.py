@@ -224,3 +224,63 @@ class ReturnRegister:
             (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, -total_amount),
         )
         print(f"返金額: {total_amount}円")
+
+
+class TransactionHistory:
+    def __init__(self):
+        self.db_connector = DatabaseConnector()
+
+    def search_transactions(self):
+        with self.db_connector.connect("sales") as conn:
+            cur = conn.cursor()
+            query = self.build_query()
+            cur.execute(query)
+            rows = cur.fetchall()
+            self.display_transactions(rows)
+
+    def build_query(self):
+        print("検索条件を入力してください。")
+        conditions = []
+
+        transaction_id = input("トランザクションID (空白の場合は全件検索): ")
+        if transaction_id:
+            conditions.append(f"transaction_id = {transaction_id}")
+
+        sales_type = input("売上タイプ (1: 通常売上, 2: 返品, 空白: 全て): ")
+        if sales_type:
+            conditions.append(f"sales_type = {sales_type}")
+
+        date_from = input("開始日 (YYYY-MM-DD, 空白の場合は指定なし): ")
+        date_to = input("終了日 (YYYY-MM-DD, 空白の場合は指定なし): ")
+        if date_from and date_to:
+            conditions.append(f"date BETWEEN '{date_from}' AND '{date_to}'")
+        elif date_from:
+            conditions.append(f"date >= '{date_from}'")
+        elif date_to:
+            conditions.append(f"date <= '{date_to}'")
+
+        staffCode = input("スタッフコード (空白の場合は全て): ")
+        if staffCode:
+            conditions.append(f"staffCode = '{staffCode}'")
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        query = f"SELECT * FROM Transactions WHERE {where_clause} ORDER BY date DESC"
+        return query
+
+    def display_transactions(self, rows):
+        if not rows:
+            print("検索結果はありません。")
+            return
+
+        print("{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
+            "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "合計金額", "預かり金"
+        ))
+        print("-" * 100)
+
+        for row in rows:
+            transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change = row
+            print("{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
+                transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit
+            ))
+
+        print("-" * 100)
