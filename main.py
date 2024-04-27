@@ -1,4 +1,6 @@
 from SalesRegister import SalesRegister
+from SalesRegister import ReturnRegister
+
 from StoreMaster import StoreMaster
 from auth import Authentication
 import global_value as g
@@ -28,8 +30,8 @@ def top_page():
         print("\nお疲れさまでした！")
         exit
     elif mode == "5":
-        sales_register = SalesRegister()
-        sales_register.return_process()
+        return_register = ReturnRegister()
+        return_register.returnProcess()
     else:
         print("\n無効な選択")
         top_page()
