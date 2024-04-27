@@ -182,12 +182,21 @@ class ReturnRegister:
         
         if not full_return:
             items = self.selectPartialItems(items)
-        
+
+        unit_price_sum, tax_sum, amount_sum = 0, 0, 0
         for item in items:
+            
             cur.execute(
                 "INSERT INTO sales_item (transaction_id, JAN, product_name, unit_price, tax_rate, amount) VALUES (?, ?, ?, ?, ?, ?)",
                 (transaction_id, item[1], item[2], -item[3], item[4], -item[5]),
-            )
+            )  # 元トランザクションid, JAN, 商品名, 本体価格, 税率, 税額, 合計額
+            unit_price_sum += item[3]
+            tax_sum += (item[4] / 100) * item[3]  # 税額の計算ロジックを会計のコードから持ってくる
+            amount_sum += item[5]
+        tax_sum = int(Decimal(str(tax_sum)).quantize(Decimal("0"), ROUND_HALF_UP))
+        if not full_return:
+            self.registerRefundTransaction(len(items), tax_sum, unit_price_sum, amount_sum, conn)
+            
 
     def selectPartialItems(self, items):
         print("返品する商品を選んでください:")
