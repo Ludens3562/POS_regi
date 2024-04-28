@@ -31,7 +31,7 @@ def top_page():
         exit
     elif mode == "5":
         return_register = ReturnRegister()
-        return_register.returnProcess()
+        return_register.return_process()
     elif mode == "6":
         history = TransactionHistory()
         history.search_transactions()
