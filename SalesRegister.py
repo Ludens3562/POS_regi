@@ -130,9 +130,8 @@ class SalesRegister:
 class ReturnRegister:
     def __init__(self):
         self.db_connector = DatabaseConnector()
-        self.purchased_items = []
-        
-    def returnProcess(self):
+
+    def return_process(self):
         with self.db_connector.connect("sales") as conn:
             cur = conn.cursor()
             transaction_id = input("トランザクションIDを入力してください: ")
@@ -142,88 +141,91 @@ class ReturnRegister:
                 sales_type = row[0]
                 if sales_type != 1:
                     print("返品処理は売上データ以外に実行できません")
-                    return self.returnProcess()
+                    return self.return_process()
+
             return_type = input("全返品の場合は1を、一部返品の場合は2を入力してください: ")
 
             if return_type == "1":
-                self.fullReturn(transaction_id)
+                self.full_return(transaction_id)
             elif return_type == "2":
-                self.partialReturn(transaction_id)
+                self.partial_return(transaction_id)
             else:
                 print("無効な入力です。")
                 return
 
-    def fullReturn(self, transaction_id):
+    def full_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
             try:
-                self.processItems(transaction_id, conn, full_return=True)
-                self.registerFullNegativeTransaction(transaction_id, conn)
+                items = self._get_transaction_items(transaction_id, conn)
+                self._process_items(transaction_id, conn, items, full_return=True)
+                self._register_negative_transaction(transaction_id, conn)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
                 print("返品処理に失敗しました。", e)
 
-    def partialReturn(self, transaction_id):
+    def partial_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
             try:
-                self.processItems(transaction_id, conn, full_return=False)
+                items = self._get_transaction_items(transaction_id, conn)
+                items = self._select_partial_items(items)
+                self._process_items(transaction_id, conn, items, full_return=False)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
                 print("返品処理に失敗しました。", e)
 
-    def processItems(self, transaction_id, conn, full_return):
+    def _get_transaction_items(self, transaction_id, conn):
         cur = conn.cursor()
         cur.execute(
             "SELECT id, JAN, product_name, unit_price, tax_rate, amount FROM sales_item WHERE transaction_id = ?",
             (transaction_id,),
         )
-        items = cur.fetchall()
-        
-        if not full_return:
-            items = self.selectPartialItems(items)
+        return cur.fetchall()
 
+    def _process_items(self, transaction_id, conn, items, full_return):
+        cur = conn.cursor()
         unit_price_sum, tax_sum, amount_sum = 0, 0, 0
+
         for item in items:
-            
             cur.execute(
                 "INSERT INTO sales_item (transaction_id, JAN, product_name, unit_price, tax_rate, amount) VALUES (?, ?, ?, ?, ?, ?)",
                 (transaction_id, item[1], item[2], -item[3], item[4], -item[5]),
-            )  # 元トランザクションid, JAN, 商品名, 本体価格, 税率, 税額, 合計額
+            )
             unit_price_sum += item[3]
-            tax_sum += (item[4] / 100) * item[3]  # 税額の計算ロジックを会計のコードから持ってくる
+            tax_sum += (item[4] / 100) * item[3]
             amount_sum += item[5]
+
         tax_sum = int(Decimal(str(tax_sum)).quantize(Decimal("0"), ROUND_HALF_UP))
+
         if not full_return:
-            self.registerRefundTransaction(len(items), tax_sum, unit_price_sum, amount_sum, conn)
-            
+            self._register_refund_transaction(len(items), tax_sum, unit_price_sum, amount_sum, conn)
 
-    def selectPartialItems(self, items):
-        print("返品する商品を選んでください:")
-        for i, item in enumerate(items, 1):
-            print(f"{str(i).zfill(2)}. {item[1]} {item[2]} (金額: {item[5]}円)")
-        selected_items = input("返品する商品番号をカンマ区切りで入力してください（例: 1,3）: ")
-        selected_indexes = [int(x) - 1 for x in selected_items.split(",")]
-        return [items[i] for i in selected_indexes]
-
-    def registerFullNegativeTransaction(self, transaction_id, conn):
+    def _register_negative_transaction(self, transaction_id, conn):
         cur = conn.cursor()
         cur.execute(
             "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
             (transaction_id,),
         )
         row = cur.fetchone()
+        self._register_refund_transaction(row[0], row[1], row[2], row[3], conn)
 
-        self.registerRefundTransaction(row[0], row[1], row[2], row[3], conn)
-
-    def registerRefundTransaction(self, purchase_points, total_tax_amount, total_base_price, total_amount, conn):
+    def _register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, total_amount, conn):
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO Transactions (sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change)
                     VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)""",
-            (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, -total_amount),
+            (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, total_amount),
         )
         print(f"返金額: {total_amount}円")
+
+    def _select_partial_items(self, items):
+        print("返品する商品を選んでください:")
+        for i, item in enumerate(items, 1):
+            print(f"{str(i).zfill(2)}. {item[1]} {item[2]} (金額: {item[5]}円)")
+        selected_items = input("返品する商品番号をカンマ区切りで入力してください（例: 1,3）: ")
+        selected_indexes = [int(x) - 1 for x in selected_items.split(",")]
+        return [items[i] for i in selected_indexes]
 
 
 class TransactionHistory:
@@ -232,13 +234,13 @@ class TransactionHistory:
 
     def search_transactions(self):
         with self.db_connector.connect("sales") as conn:
+            query = self._build_query()
             cur = conn.cursor()
-            query = self.build_query()
             cur.execute(query)
             rows = cur.fetchall()
-            self.display_transactions(rows)
+            self._display_transactions(rows)
 
-    def build_query(self):
+    def _build_query(self):
         print("検索条件を入力してください。")
         conditions = []
 
@@ -264,18 +266,18 @@ class TransactionHistory:
             conditions.append(f"staffCode = '{staffCode}'")
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-        query = f"SELECT * FROM Transactions WHERE {where_clause} ORDER BY date DESC"
+        query = f"SELECT * FROM Transactions WHERE {where_clause} ORDER BY date ASC"
         return query
 
-    def display_transactions(self, rows):
+    def _display_transactions(self, rows):
         if not rows:
             print("検索結果はありません。")
             return
 
-        print("{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
-            "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "合計金額", "預かり金"
+        print("{:<6} {:<9} {:<13} {:8} {:<8} {:<7} {:<6} {:<6} {:<7}".format(
+            "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "税込価格", "釣銭"
         ))
-        print("-" * 100)
+        print("-" * 110)
 
         for row in rows:
             transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change = row
@@ -283,4 +285,4 @@ class TransactionHistory:
                 transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit
             ))
 
-        print("-" * 100)
+        print("-" * 110)
