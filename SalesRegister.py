@@ -188,16 +188,23 @@ class ReturnRegister:
     def return_process(self):
         with self.db_connector.connect("sales") as conn:
             cur = conn.cursor()
+            print("\n=返品処理=")
             transaction_id = input("トランザクションIDを入力してください: ")
             cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
             row = cur.fetchone()
             if row:
                 sales_type = row[0]
-                if sales_type != 1:
+                if sales_type == 3:
+                    print("すでに返品済みの取引です")
+                    return self.return_process()
+                elif sales_type != 1:
                     print("返品処理は売上データ以外に実行できません")
                     return self.return_process()
+            else:
+                print("\nトランザクションIDが見つかりません")
+                return self.return_process()
 
-            return_type = input("全返品の場合は1を、一部返品の場合は2を入力してください: ")
+            return_type = input("1.全返品\n2.一部返品\n>")
 
             if return_type == "1":
                 self.full_return(transaction_id)
@@ -257,6 +264,10 @@ class ReturnRegister:
 
     def _register_negative_transaction(self, transaction_id, conn):
         cur = conn.cursor()
+        cur.execute(
+            "UPDATE Transactions SET sales_type = 3 WHERE transaction_id = ?",
+            (transaction_id,),
+        )
         cur.execute(
             "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
             (transaction_id,),
