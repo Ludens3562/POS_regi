@@ -33,20 +33,81 @@ class SalesRegister:
 
     def register_sales(self):
         self.purchased_items = []
+        print("\n==売上登録==")
         while True:
             barcode = input("JAN入力: ")
             if barcode == "":
-                break
+                if self.purchased_items:
+                    self.checkout_options()
+                else:
+                    print("商品が登録されていません。JANコードを入力してください\n")
+                    continue
             elif self.is_barcode_valid(barcode):
                 self.purchased_items.append(barcode)
             else:
                 print("無効な入力\n")
 
-        if not self.purchased_items:
-            print("商品が登録されていません。JANコードを入力してください\n")
-            self.register_sales()
+    def checkout_options(self):
+        print("\n=小計メニュー=")
+        print("1. 会計修正\n2. 会計中止\n3. 会計保留\n空白で支払い入力に進む")
+        choice = input("\n入力:")
+        if choice == "1":
+            self.remove_items()
+            self.checkout_options()
+        elif choice == "2":
+            self.cancel_checkout()
+        elif choice == "3":
+            self.hold_checkout()
+        elif choice == "4":
+            self.complete_sales()
+        elif choice == "":
+            self.complete_sales()
+        else:
+            print("無効な選択肢です。もう一度入力してください。")
+            self.checkout_options()
 
-        self.complete_sales()
+    def remove_items(self):
+        print("削除する商品の番号を入力してください (カンマ区切りで複数可)")
+        for i, barcode in enumerate(self.purchased_items, start=1):
+            item = self.get_item_info(barcode)
+            print(f"{i}. {item[1]} ￥{item[4]} {item[2]} ")
+        indices = input("> ").split(",")
+        indices = [int(index) for index in indices if index.isdigit()]
+        indices.sort(reverse=True)
+        for index in indices:
+            if 1 <= index <= len(self.purchased_items):
+                self.purchased_items.pop(index - 1)
+            else:
+                print(f"{index}は無効な番号です")
+        if not self.purchased_items:
+            # リストが空の場合は会計を中止
+            print("すべての商品が削除されました")
+            self.cancel_checkout()
+            return
+        self.checkout_options()
+
+    def cancel_checkout(self):
+        print("\n会計を中止します")
+        self.purchased_items = []
+        self.register_sales()
+
+    def hold_checkout(self):
+        with self.db_connector.connect("sales") as conn:
+            try:
+                # "保留テーブルの定義が未完了のためpending"
+                # cur = conn.cursor()
+                # cur.execute(
+                #     """INSERT INTO held_transactions (date, purchase_items)
+                #         VALUES (datetime('now'), ?)""",
+                #     (str(self.purchased_items),)
+                # )
+                # conn.commit()
+                print("\n会計が保留されました\n")
+            except Exception as e:
+                # conn.rollback()
+                raise e
+        self.register_sales()
+
 
     def complete_sales(self):
         sales_type = 1  # 1: 通常売上 2.返品
@@ -111,7 +172,7 @@ class SalesRegister:
                         cur.execute(
                             """INSERT INTO sales_item (transaction_id, JAN, product_name, unit_price, tax_rate, amount) 
                                     VALUES (?, ?, ?, ?, ?, ?)""",
-                            (transaction_id, JAN, product_name, unit_price, tax_rate, int(amount)),
+                            (str(transaction_id).zfill(4), JAN, product_name, unit_price, tax_rate, int(amount)),
                         )
 
                 conn.commit()
