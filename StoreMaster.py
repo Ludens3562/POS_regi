@@ -1,5 +1,6 @@
 import sqlite3
 import getpass
+import bcrypt
 from auth import Authentication
 import global_value as g
 
@@ -149,51 +150,65 @@ class StoreMaster:
         print("\n==スタッフ情報変更==")
         with connect_db() as conn:
             cur = conn.cursor()
-
-            staff_code = input("変更するスタッフコード:")
-            if staff_code == "":
+            password = getpass.getpass("パスワードを入力:")
+            cur.execute("SELECT password FROM staffs WHERE staffCode = ?", (g.staffCode,))
+            row = cur.fetchone()
+            hash_password = row[0]
+            auth.verify_password(password, hash_password)
+            if not auth.verify_password(password, hash_password):
+                print("パスワードが違います")
                 self.maintenance_page()
-                return
-            elif staff_code == g.staffCode:
-                print("自分自身の情報は変更できません")
-                self.update_staff_info()
-                return
-            # 現在のスタッフの権限取得
-            cur.execute("SELECT permission FROM staffs WHERE staffCode = ?", (g.staffCode,))
-            current_staff_permission = cur.fetchone()
-            # 変更対象のスタッフ情報取得
-            cur.execute("SELECT * FROM staffs WHERE staffCode = ?", (staff_code,))
-            staff = cur.fetchone()
-            if not staff:
-                print("該当するスタッフ情報はありません")
-                self.update_staff_info()
-                return
-            
-            if int(staff[4]) <= int(current_staff_permission[0]):
-                print("変更権限がありません")
-                self.update_staff_info()
-                return
-
-            print(f"スタッフ名: {staff[2]}\nパスワード:******\n権限: {staff[4]}\n")
-            print("変更したい情報を選択してください:\n1.スタッフ名\n2.パスワード\n3.権限\n")
-            choice = input("選択:")
-
-            if choice == "1":
-                new_name = input(f"\n現在のスタッフ名: {staff[2]}\n新しいスタッフ名:")
-                cur.execute("UPDATE staffs SET name = ? WHERE staffCode = ?", (new_name, staff_code))
-            elif choice == "2":
-                new_password = getpass.getpass("\n新しいパスワード:")
-                cur.execute("UPDATE staffs SET password = ? WHERE staffCode = ?", (new_password, staff_code))
-            elif choice == "3":
-                new_permission = input(f"\n現在の権限: {staff[4]}\n新しい権限:")
-                if int(new_permission) <= int(current_staff_permission[0]):
-                    print("自分より低い権限のみ割り当て可能です")
+            else:
+                staff_code = input("変更するスタッフコード:")
+                if staff_code == "":
+                    self.maintenance_page()
+                    return
+                elif staff_code == g.staffCode:
+                    print("自分自身の情報は変更できません")
                     self.update_staff_info()
                     return
-                cur.execute("UPDATE staffs SET permission = ? WHERE staffCode = ?", (new_permission, staff_code))
-            else:
-                print("無効な選択肢です。")
-                return
-            conn.commit()
-            print("スタッフ情報を更新しました")
-            self.update_staff_info()
+                # 現在のスタッフの権限取得
+                cur.execute("SELECT permission FROM staffs WHERE staffCode = ?", (g.staffCode,))
+                current_staff_permission = cur.fetchone()
+                # 変更対象のスタッフ情報取得
+                cur.execute("SELECT * FROM staffs WHERE staffCode = ?", (staff_code,))
+                staff = cur.fetchone()
+                if not staff:
+                    print("該当するスタッフ情報はありません")
+                    self.update_staff_info()
+                    return
+
+                if int(staff[4]) <= int(current_staff_permission[0]):
+                    print("変更権限がありません")
+                    self.update_staff_info()
+                    return
+
+                print(f"スタッフ名: {staff[2]}\nパスワード:******\n権限: {staff[4]}\n")
+                print("変更したい情報を選択してください:\n1.スタッフ名\n2.パスワード\n3.権限\n")
+                choice = input("選択:")
+
+                if choice == "1":
+                    new_name = input(f"\n現在のスタッフ名: {staff[2]}\n新しいスタッフ名:")
+                    cur.execute("UPDATE staffs SET name = ? WHERE staffCode = ?", (new_name, staff_code))
+                elif choice == "2":
+                    new_password = getpass.getpass("\n新しいパスワード:")
+                    # パスワードをバイト列に変換
+                    password_bytes = new_password.encode("utf-8")
+                    # ソルトを生成し、ハッシュ値を計算
+                    salt = bcrypt.gensalt()
+                    hashed_password = bcrypt.hashpw(password_bytes, salt)
+                    hashed_password.decode("utf-8")  # ハッシュ済みのパスワード
+                    cur.execute("UPDATE staffs SET password = ? WHERE staffCode = ?", (hashed_password, staff_code))
+                elif choice == "3":
+                    new_permission = input(f"\n現在の権限: {staff[4]}\n新しい権限:")
+                    if int(new_permission) <= int(current_staff_permission[0]):
+                        print("自分より低い権限のみ割り当て可能です")
+                        self.update_staff_info()
+                        return
+                    cur.execute("UPDATE staffs SET permission = ? WHERE staffCode = ?", (new_permission, staff_code))
+                else:
+                    print("無効な選択肢です。")
+                    return
+                conn.commit()
+                print("スタッフ情報を更新しました")
+                self.update_staff_info()
