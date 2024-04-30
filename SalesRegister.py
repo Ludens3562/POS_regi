@@ -14,6 +14,7 @@ class DatabaseConnector:
             return sqlite3.connect(self.sales_dbname)
         return sqlite3.connect(self.master_dbname)
 
+
 class SalesRegister:
     def __init__(self):
         self.db_connector = DatabaseConnector()
@@ -32,7 +33,6 @@ class SalesRegister:
             return cur.fetchone()
 
     def register_sales(self):
-        self.purchased_items = []
         print("\n==売上登録==")
         while True:
             barcode = input("JAN入力: ")
@@ -49,7 +49,7 @@ class SalesRegister:
 
     def checkout_options(self):
         print("\n=小計メニュー=")
-        print("1. 会計修正\n2. 会計中止\n3. 会計保留\n空白で支払い入力に進む")
+        print("1. 会計修正\n2. 会計中止\n3. 会計保留\n4. 登録に戻る\n空白で支払い入力に進む")
         choice = input("\n入力:")
         if choice == "1":
             self.remove_items()
@@ -59,7 +59,7 @@ class SalesRegister:
         elif choice == "3":
             self.hold_checkout()
         elif choice == "4":
-            self.complete_sales()
+            self.register_sales()
         elif choice == "":
             self.complete_sales()
         else:
@@ -94,33 +94,51 @@ class SalesRegister:
     def hold_checkout(self):
         with self.db_connector.connect("sales") as conn:
             try:
-                # "保留テーブルの定義が未完了のためpending"
-                # cur = conn.cursor()
-                # cur.execute(
-                #     """INSERT INTO held_transactions (date, purchase_items)
-                #         VALUES (datetime('now'), ?)""",
-                #     (str(self.purchased_items),)
-                # )
-                # conn.commit()
+                cur = conn.cursor()
+                cur.execute(
+                    """INSERT INTO hold_transactions (date, purchase_items)
+                        VALUES (datetime('now'), ?)""",
+                    (str(self.purchased_items),),
+                )
+                conn.commit()
                 print("\n会計が保留されました\n")
             except Exception as e:
-                # conn.rollback()
+                conn.rollback()
                 raise e
         self.register_sales()
 
+    def resume_hold_checkout(self):
+        with self.db_connector.connect("sales") as conn:
+            cur = conn.cursor()
+            hold_id = input("保留ID:")
+            try:
+                # 保留テーブルから保留idをキーにしたデータ検索
+                cur.execute("SELECT purchase_items FROM hold_transactions WHERE id = ?", (hold_id,))
+                result = cur.fetchone()
+                if not result:
+                    print("指定されたIDの会計は存在しません。")
+                    self.resume_hold_checkout()
+                # 文字列形式で保存された購入アイテムリストを復元
+                self.purchased_items = eval(result[0])
+                print(f"\n保留会計が復元されました。登録された商品数: {len(self.purchased_items)}")
+                # 保留された会計データを削除
+                cur.execute("DELETE FROM hold_transactions WHERE id = ?", (hold_id,))
+                conn.commit()
+                self.checkout_options()
+            except Exception as e:
+                conn.rollback()
+                print("エラーが発生しました: ", e)
 
     def complete_sales(self):
-        sales_type = 1  # 1: 通常売上 2.返品
         tax_total, price_total, sub_total = self.calculate_totals()
         purchase_points = len(self.purchased_items)
         print(f"\n点数： {purchase_points}点")
         print(f"税抜き価格: {price_total}円\n消費税相当額: {tax_total}円\n合計金額: {sub_total}円")
         deposit, change = self.process_payment(sub_total)
         print(f"\nお釣り: {change}円\n---会計終了---\n")
+        self.purchased_items = []
         self.update_stock()
-        self.register_transaction(
-            sales_type, purchase_points, tax_total, price_total, sub_total, deposit, change
-        )
+        self.register_transaction(1, purchase_points, tax_total, price_total, sub_total, deposit, change)
         self.register_sales()
 
     def calculate_totals(self):
@@ -339,15 +357,38 @@ class TransactionHistory:
             print("検索結果はありません。")
             return
 
-        print("{:<6} {:<9} {:<13} {:8} {:<8} {:<7} {:<6} {:<6} {:<7}".format(
-            "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "税込価格", "釣銭"
-        ))
+        print(
+            "{:<6} {:<9} {:<13} {:8} {:<8} {:<7} {:<6} {:<6} {:<7}".format(
+                "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "税込価格", "釣銭"
+            )
+        )
         print("-" * 110)
 
         for row in rows:
-            transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change = row
-            print("{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
-                transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit
-            ))
+            (
+                transaction_id,
+                sales_type,
+                date,
+                staffCode,
+                purchase_points,
+                total_tax_amount,
+                total_base_price,
+                total_amount,
+                deposit,
+                change,
+            ) = row
+            print(
+                "{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
+                    transaction_id,
+                    sales_type,
+                    date,
+                    staffCode,
+                    purchase_points,
+                    total_tax_amount,
+                    total_base_price,
+                    total_amount,
+                    deposit,
+                )
+            )
 
         print("-" * 110)

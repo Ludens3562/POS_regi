@@ -7,14 +7,16 @@ import directSQL
 import global_value as g
 
 auth = Authentication()
+sales_register = SalesRegister()
 
 
 def top_page():
     print("\n===業務選択===")
-    print("1.売上登録\n2.マスターメンテ\n3.ログオフ\n4.終了\n5.返品処理\n6.ジャーナル検索\n7.SQL直接実行")
+    print(
+        "1.売上登録\n2.マスターメンテ\n3.ログオフ\n4.終了\n5.返品処理\n6.ジャーナル検索\n7.SQL直接実行\n8.保留呼び出し"
+    )
     mode = input("業務選択：")
     if mode == "1":
-        sales_register = SalesRegister()
         sales_register.register_sales()
     elif mode == "2":
         Store_Master = StoreMaster()
@@ -38,6 +40,8 @@ def top_page():
         history.search_transactions()
     elif mode == "7":
         directSQL.main()
+    elif mode == "8":
+        sales_register.resume_hold_checkout()
     else:
         print("\n無効な選択")
         top_page()

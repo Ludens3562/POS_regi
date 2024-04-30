@@ -34,6 +34,14 @@ def create_tables(cur):
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hold_transactions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date DATETIME,
+            purchase_items TEXT)
+        """
+    )
 
 
 def setup_database():
