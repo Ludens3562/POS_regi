@@ -1,11 +1,11 @@
 ﻿staffCode, name, password, permission
-11112, テストユーザー1, password1, 1
-11113, テストユーザー2, password2, 3
-11114, テストユーザー3, password3, 3
-11115, テストユーザー4, password4, 5
-11116, テストユーザー5, password5, 5
-11117, テストユーザー6, password6, 5
-11118, テストユーザー7, password7, 5
-11119, テストユーザー8, password8, 6
-11120, テストユーザー9, password9, 6
-11121, テストユーザー10, password10, 6
+11112, テストユーザー1,$2b$12$oD/kwX23B2ysaZT7vzvU7OolqooIP8FIC2APHpGpNlyO3/h.4..mu,1
+11113, テストユーザー2,$2b$12$kqMo9OR9gPG5cVpjfbS7y.kqQLpJAXDFEXSLNTBlJPiJmI9WgPYh2,3
+11114, テストユーザー3,$2b$12$j.Mexc2HUHGlLFhSjrKpouOX6Unj9KHpnbkitwck.ELO1cxprs8V.,3
+11115, テストユーザー4,$2b$12$xvVsNFUYGVt3jfKgb4XRY.kyuNnIHAuH0AO6JtUNgmxTPULZaM/ra,5
+11116, テストユーザー5,$2b$12$.6u.3bqmZoIdD2euO7sN6uwp1n00IcNpVHvYHTRaFN0H7e2YMSDbW,5
+11117, テストユーザー6,$2b$12$ExQSgyH.xajfw5S/A9G5veLdkXNLbzRMUmkg9O01pWgwZ47EPlxKS,5
+11118, テストユーザー7,$2b$12$k9m66KNP4C3hrWI/OQUQCOS0MYaSPZjRtm.b.9GDTLhgueoWZoF4a,5
+11119, テストユーザー8,$2b$12$n1szQF0SxyVStPz9YrDUB.62a863tsf8hBLaRx8Mi.94ngejcZszS,6
+11120, テストユーザー9,$2b$12$poEra8236k.iUB4N7ky9RO/x9UhInupZ24chqy0qpA6fzu1AZInqy,6
+11121, テストユーザー10,$2b$12$a4IIvIO4/NQfjMT7EnDP2ObDLaRSbVyL7mDkODZAOUwh4BOkwk7mu,6
