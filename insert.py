@@ -66,6 +66,7 @@ class table_master:
 
     def create_master_DB(self, cur):
         try:
+            cur.execute("PRAGMA foreign_keys = ON")
             cur.execute("BEGIN TRANSACTION")
             cur.execute(  # itemsテーブルの作成
                 """
@@ -94,7 +95,8 @@ class table_master:
                     staffCode INTEGER NOT NULL UNIQUE,
                     name TEXT,
                     password TEXT,
-                    permission INTEGER)
+                    permission_level INTEGER,
+                    FOREIGN KEY ('permission_level') REFERENCES 'permissions' (permission_level))
                 """
             )
             cur.execute("COMMIT TRANSACTION")
@@ -106,7 +108,6 @@ class table_master:
         with self.db_connector.connect("sales") as conn:
             try:
                 cur = conn.cursor()
-                cur.execute("PRAGMA foreign_keys = ON")
                 cur.execute("BEGIN TRANSACTION")
                 cur.execute(  # Transactionsテーブルの作成
                     """
@@ -230,12 +231,12 @@ class table_master:
                 for row in reader:
                     staff_code, name, password, permission = row
                     cur.execute(
-                        "UPDATE staffs SET name = ?, password = ?, permission = ? WHERE staffCode = ?",
+                        "UPDATE staffs SET name = ?, password = ?, permission_level = ? WHERE staffCode = ?",
                         (name, password, permission, staff_code),
                     )
                     if cur.rowcount == 0:
                         cur.execute(
-                            "INSERT INTO staffs (staffCode, name, password, permission) VALUES (?, ?, ?, ?)",
+                            "INSERT INTO staffs (staffCode, name, password, permission_level) VALUES (?, ?, ?, ?)",
                             (staff_code, name, password, permission),
                         )
         except Exception as e:

@@ -30,7 +30,7 @@ class Authentication:
     def check_permission(self, staffCode, requireLevel):
         with self.connect_db() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT permission FROM staffs WHERE staffCode = ?", (staffCode,))
+            cur.execute("SELECT permission_level FROM staffs WHERE staffCode = ?", (staffCode,))
             row = cur.fetchone()
             if row:
                 if row[0] <= requireLevel:

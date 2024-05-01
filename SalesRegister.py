@@ -215,7 +215,7 @@ class ReturnRegister:
     def return_process(self):
         with self.db_connector.connect("sales") as conn:
             cur = conn.cursor()
-            print("\n=返品処理=")
+            print("\n==返品処理==")
             transaction_id = input("トランザクションIDを入力してください: ")
             if transaction_id == "":
                 back_to_main()
