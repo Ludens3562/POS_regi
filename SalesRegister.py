@@ -147,8 +147,8 @@ class SalesRegister:
         print(f"\nお釣り: {change}円\n---会計終了---\n")
         self.update_stock()
         self.register_transaction(1, purchase_points, tax_total, price_total, sub_total, deposit, change)
-        self.register_sales()
         self.purchased_items = []
+        self.register_sales()
 
     def calculate_totals(self):
         tax_total = price_total = 0
@@ -220,6 +220,7 @@ class ReturnRegister:
             if transaction_id == "":
                 back_to_main()
             else:
+                # 変更対象のsales_typeを確認　1.販売（返品可能）, 2.返品データ,  3.返品済み（返品の元取引）
                 cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
                 row = cur.fetchone()
                 if row:
@@ -233,7 +234,6 @@ class ReturnRegister:
                 else:
                     print("\nトランザクションIDが見つかりません")
                     return self.return_process()
-
                 return_type = input("1.全返品\n2.一部返品\n>")
 
                 if return_type == "1":
@@ -244,12 +244,18 @@ class ReturnRegister:
                     print("無効な入力です。")
                     return
 
+    # TODO：データベースのコネクト処理を共通化して整理する（現在のままだとデータベースロックが発生する）
+    # TODO：返品処理のコミットタイミングを明確化する
+
     def full_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
-            try:
-                items = self._get_transaction_items(transaction_id, conn)
+            try:  # 全アイテム取得 => sales_itemテーブルマイナス処理 => Transactionテーブルマイナス処理・元取引ステータスを3に（返品済み取引）
+                items = self._get_all_sales_items(transaction_id, conn)
                 self._process_items(transaction_id, conn, items, full_return=True)
-                self._register_negative_transaction(transaction_id, conn)
+                self._change_origin_Transaction_status(transaction_id, 3, conn)
+                row = self._get_Transaction_data(transaction_id, conn)
+                # self._register_negative_transaction(transaction_id, conn)
+                self._register_refund_transaction(row[0], row[1], row[2], row[3], conn)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
@@ -257,63 +263,22 @@ class ReturnRegister:
 
     def partial_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
-            try:
-                items = self._get_transaction_items(transaction_id, conn)
-                items = self._select_partial_items(items)
+            try:  # 全アイテム取得 => 返品アイテム選択 => sales_itemテーブルマイナス処理・Transactionテーブルマイナス処理・元取引ステータスを3に（返品済み取引）
+                items = self._get_all_sales_items(transaction_id, conn)  # 全アイテムがitemsリストに入ってる
+                items = self._select_partial_items(items)  # 選択した返品商品がitemsリストに入ってる
                 self._process_items(transaction_id, conn, items, full_return=False)
-                conn.commit()
+                self._change_origin_Transaction_status(transaction_id, 3, conn)
             except Exception as e:
                 conn.rollback()
                 print("返品処理に失敗しました", e)
 
-    def _get_transaction_items(self, transaction_id, conn):
+    def _get_all_sales_items(self, transaction_id, conn):
         cur = conn.cursor()
-        cur.execute(
+        cur.execute(  # transaction_idをキーにsales_itemテーブルから全アイテム取得
             "SELECT id, JAN, product_name, unit_price, tax_rate, amount FROM sales_item WHERE transaction_id = ?",
             (transaction_id,),
         )
         return cur.fetchall()
-
-    def _process_items(self, transaction_id, conn, items, full_return):
-        cur = conn.cursor()
-        unit_price_sum, tax_sum, amount_sum = 0, 0, 0
-
-        for item in items:
-            cur.execute(
-                "INSERT INTO sales_item (transaction_id, JAN, product_name, unit_price, tax_rate, amount) VALUES (?, ?, ?, ?, ?, ?)",
-                (transaction_id, item[1], item[2], -item[3], item[4], -item[5]),
-            )
-            unit_price_sum += item[3]
-            tax_sum += (item[4] / 100) * item[3]
-            amount_sum += item[5]
-
-        tax_sum = int(Decimal(str(tax_sum)).quantize(Decimal("0"), ROUND_HALF_UP))
-
-        if not full_return:
-            self._register_refund_transaction(len(items), tax_sum, unit_price_sum, amount_sum, conn)
-
-    def _register_negative_transaction(self, transaction_id, conn):
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE Transactions SET sales_type = 3 WHERE transaction_id = ?",
-            (transaction_id,),
-        )
-        cur.execute(
-            "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
-            (transaction_id,),
-        )
-        row = cur.fetchone()
-        self._register_refund_transaction(row[0], row[1], row[2], row[3], conn)
-
-    def _register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, total_amount, conn):
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO Transactions (sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change)
-                    VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)""",
-            (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, total_amount),
-        )
-        print(f"返金額: {total_amount}円")
-        back_to_main()
 
     def _select_partial_items(self, items):
         print("返品する商品を選んでください:")
@@ -322,6 +287,64 @@ class ReturnRegister:
         selected_items = input("返品する商品番号をカンマ区切りで入力してください（例: 1,3）: ")
         selected_indexes = [int(x) - 1 for x in selected_items.split(",")]
         return [items[i] for i in selected_indexes]
+
+    def _process_items(self, transaction_id, conn, items, full_return):
+        cur = conn.cursor()
+        unit_price_sum, tax_sum, amount_sum = 0, 0, 0
+        for item in items:
+            cur.execute(  # sales_itemテーブルの各アイテムをマイナス処理
+                "INSERT INTO sales_item (transaction_id, JAN, product_name, unit_price, tax_rate, amount) VALUES (?, ?, ?, ?, ?, ?)",
+                (transaction_id, item[1], item[2], -item[3], item[4], -item[5]),
+            )
+            unit_price_sum += item[3]
+            tax_sum += (item[4] / 100) * item[3]
+            amount_sum += item[5]
+        # 税額の合計を四捨五入
+        tax_sum = int(Decimal(str(tax_sum)).quantize(Decimal("0"), ROUND_HALF_UP))
+
+        if not full_return:
+            self._register_refund_transaction(len(items), tax_sum, unit_price_sum, amount_sum, conn)
+            conn.commit()
+
+    def _change_origin_Transaction_status(self, transaction_id, sales_type, conn):
+        cur = conn.cursor()
+        cur.execute(  # 元取引のsales_typeを返品済みに変更
+            "UPDATE Transactions SET sales_type = ? WHERE transaction_id = ?",
+            (sales_type, transaction_id),
+        )
+
+    def _get_Transaction_data(self, transaction_id, conn):
+        cur = conn.cursor()
+        cur.execute(  # 元取引のTransactionsテーブルデータ取得
+            "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
+            (transaction_id,),
+        )
+        return cur.fetchone()
+
+    #  _change_origin_Transaction_statusと_get_Transaction_dataに分割したため、不要になったメソッド
+    # def _register_negative_transaction(self, transaction_id, conn):
+    #     cur = conn.cursor()
+    #     cur.execute(  # 元取引のsales_typeを返品済みに変更
+    #         "UPDATE Transactions SET sales_type = 3 WHERE transaction_id = ?",
+    #         (transaction_id,),
+    #     )
+    #     cur.execute(  # 元取引のTransactionsテーブルデータ取得
+    #         "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
+    #         (transaction_id,),
+    #     )
+    #     row = cur.fetchone()
+    #     self._register_refund_transaction(row[0], row[1], row[2], row[3], conn)
+
+    def _register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, total_amount, conn):
+        cur = conn.cursor()
+        cur.execute(  # 元取引データを基にマイナスデータをTransactionsテーブルに挿入
+            """INSERT INTO Transactions (sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change)
+                    VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)""",
+            (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, total_amount),
+        )
+        print(f"返金額: {total_amount}円")
+        conn.commit()
+        return
 
 
 class TransactionHistory:
