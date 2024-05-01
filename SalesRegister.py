@@ -4,6 +4,12 @@ from datetime import datetime
 import global_value as g
 
 
+def back_to_main():
+    import main
+
+    main.top_page()
+
+
 class DatabaseConnector:
     def __init__(self):
         self.master_dbname = "master.sqlite"
@@ -40,8 +46,7 @@ class SalesRegister:
                 if self.purchased_items:
                     self.checkout_options()
                 else:
-                    print("商品が登録されていません。JANコードを入力してください\n")
-                    continue
+                    back_to_main()
             elif self.is_barcode_valid(barcode):
                 self.purchased_items.append(barcode)
             else:
@@ -105,29 +110,33 @@ class SalesRegister:
             except Exception as e:
                 conn.rollback()
                 raise e
-        self.register_sales()
+        back_to_main()
 
     def resume_hold_checkout(self):
         with self.db_connector.connect("sales") as conn:
             cur = conn.cursor()
             hold_id = input("保留ID:")
             try:
-                # 保留テーブルから保留idをキーにしたデータ検索
-                cur.execute("SELECT purchase_items FROM hold_transactions WHERE id = ?", (hold_id,))
-                result = cur.fetchone()
-                if not result:
-                    print("指定されたIDの会計は存在しません。")
-                    self.resume_hold_checkout()
-                # 文字列形式で保存された購入アイテムリストを復元
-                self.purchased_items = eval(result[0])
-                print(f"\n保留会計が復元されました。登録された商品数: {len(self.purchased_items)}")
-                # 保留された会計データを削除
-                cur.execute("DELETE FROM hold_transactions WHERE id = ?", (hold_id,))
-                conn.commit()
-                self.checkout_options()
+                if hold_id == "":
+                    back_to_main()
+                else:
+                    # 保留テーブルから保留idをキーにしたデータ検索
+                    cur.execute("SELECT purchase_items FROM hold_transactions WHERE id = ?", (hold_id,))
+                    result = cur.fetchone()
+                    if not result:
+                        print("指定されたIDの会計は存在しません。")
+                        self.resume_hold_checkout()
+                    # 文字列形式で保存された購入アイテムリストを復元
+                    self.purchased_items = eval(result[0])
+                    print(f"\n保留会計が復元されました。登録された商品数: {len(self.purchased_items)}")
+                    # 保留された会計データを削除
+                    cur.execute("DELETE FROM hold_transactions WHERE id = ?", (hold_id,))
+                    conn.commit()
+                    self.checkout_options()
             except Exception as e:
                 conn.rollback()
                 print("エラーが発生しました: ", e)
+                back_to_main()
 
     def complete_sales(self):
         tax_total, price_total, sub_total = self.calculate_totals()
@@ -136,10 +145,10 @@ class SalesRegister:
         print(f"税抜き価格: {price_total}円\n消費税相当額: {tax_total}円\n合計金額: {sub_total}円")
         deposit, change = self.process_payment(sub_total)
         print(f"\nお釣り: {change}円\n---会計終了---\n")
-        self.purchased_items = []
         self.update_stock()
         self.register_transaction(1, purchase_points, tax_total, price_total, sub_total, deposit, change)
         self.register_sales()
+        self.purchased_items = []
 
     def calculate_totals(self):
         tax_total = price_total = 0
@@ -208,29 +217,32 @@ class ReturnRegister:
             cur = conn.cursor()
             print("\n=返品処理=")
             transaction_id = input("トランザクションIDを入力してください: ")
-            cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
-            row = cur.fetchone()
-            if row:
-                sales_type = row[0]
-                if sales_type == 3:
-                    print("すでに返品済みの取引です")
-                    return self.return_process()
-                elif sales_type != 1:
-                    print("返品処理は売上データ以外に実行できません")
-                    return self.return_process()
+            if transaction_id == "":
+                back_to_main()
             else:
-                print("\nトランザクションIDが見つかりません")
-                return self.return_process()
+                cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
+                row = cur.fetchone()
+                if row:
+                    sales_type = row[0]
+                    if sales_type == 3:
+                        print("すでに返品済みの取引です")
+                        return self.return_process()
+                    elif sales_type != 1:
+                        print("返品処理は売上データ以外に実行できません")
+                        return self.return_process()
+                else:
+                    print("\nトランザクションIDが見つかりません")
+                    return self.return_process()
 
-            return_type = input("1.全返品\n2.一部返品\n>")
+                return_type = input("1.全返品\n2.一部返品\n>")
 
-            if return_type == "1":
-                self.full_return(transaction_id)
-            elif return_type == "2":
-                self.partial_return(transaction_id)
-            else:
-                print("無効な入力です。")
-                return
+                if return_type == "1":
+                    self.full_return(transaction_id)
+                elif return_type == "2":
+                    self.partial_return(transaction_id)
+                else:
+                    print("無効な入力です。")
+                    return
 
     def full_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
@@ -241,7 +253,7 @@ class ReturnRegister:
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                print("返品処理に失敗しました。", e)
+                print("返品処理に失敗しました", e)
 
     def partial_return(self, transaction_id):
         with self.db_connector.connect("sales") as conn:
@@ -252,7 +264,7 @@ class ReturnRegister:
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                print("返品処理に失敗しました。", e)
+                print("返品処理に失敗しました", e)
 
     def _get_transaction_items(self, transaction_id, conn):
         cur = conn.cursor()
@@ -301,6 +313,7 @@ class ReturnRegister:
             (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, total_amount),
         )
         print(f"返金額: {total_amount}円")
+        back_to_main()
 
     def _select_partial_items(self, items):
         print("返品する商品を選んでください:")
@@ -390,5 +403,6 @@ class TransactionHistory:
                     deposit,
                 )
             )
+            back_to_main()
 
         print("-" * 110)

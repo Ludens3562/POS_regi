@@ -5,8 +5,13 @@ from auth import Authentication
 import global_value as g
 
 auth = Authentication()
-
 dbname = "master.sqlite"
+
+
+def back_to_main():
+    from main import main
+
+    main()
 
 
 def connect_db():
@@ -19,7 +24,7 @@ class StoreMaster:
         print("1.商品登録・変更\n2.登録削除\n3.入庫処理\n4.スタッフマスター")
         mode = input("業務選択:")
         if mode == "":
-            pass
+            back_to_main()
         elif mode == "1":
             self.register_or_update_item()
         elif mode == "2":
@@ -211,4 +216,4 @@ class StoreMaster:
                     return
                 conn.commit()
                 print("スタッフ情報を更新しました")
-                self.update_staff_info()
+                self.maintenance_page()
