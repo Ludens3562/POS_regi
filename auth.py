@@ -42,5 +42,8 @@ class Authentication:
 
     def verify_password(self, input_password, stored_password_hash):
         input_password_bytes = input_password.encode("utf-8")
-        stored_password_hash_bytes = stored_password_hash
+        if isinstance(stored_password_hash, str):
+            stored_password_hash_bytes = stored_password_hash.encode('utf-8')
+        else:
+            stored_password_hash_bytes = stored_password_hash
         return bcrypt.checkpw(input_password_bytes, stored_password_hash_bytes)
