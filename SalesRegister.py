@@ -136,10 +136,10 @@ class SalesRegister:
         print(f"税抜き価格: {price_total}円\n消費税相当額: {tax_total}円\n合計金額: {sub_total}円")
         deposit, change = self.process_payment(sub_total)
         print(f"\nお釣り: {change}円\n---会計終了---\n")
-        self.purchased_items = []
         self.update_stock()
         self.register_transaction(1, purchase_points, tax_total, price_total, sub_total, deposit, change)
         self.register_sales()
+        self.purchased_items = []
 
     def calculate_totals(self):
         tax_total = price_total = 0
@@ -206,7 +206,7 @@ class ReturnRegister:
     def return_process(self):
         with self.db_connector.connect("sales") as conn:
             cur = conn.cursor()
-            print("\n=返品処理=")
+            print("\n==返品処理==")
             transaction_id = input("トランザクションIDを入力してください: ")
             cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
             row = cur.fetchone()
