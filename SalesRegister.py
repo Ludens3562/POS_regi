@@ -120,16 +120,16 @@ class SalesRegister:
                 if hold_id == "":
                     back_to_main()
                 else:
-                    # 保留テーブルから保留idをキーにしたデータ検索
+                    # 保留テーブルから保留idをキーにしたデータを取得
                     cur.execute("SELECT purchase_items FROM hold_transactions WHERE id = ?", (hold_id,))
                     result = cur.fetchone()
                     if not result:
                         print("指定されたIDの会計は存在しません。")
                         self.resume_hold_checkout()
-                    # 文字列形式で保存された購入アイテムリストを復元
+                    # 取得結果を購入リストに復元
                     self.purchased_items = eval(result[0])
                     print(f"\n保留会計が復元されました。登録された商品数: {len(self.purchased_items)}")
-                    # 保留された会計データを削除
+                    # 保留データを削除
                     cur.execute("DELETE FROM hold_transactions WHERE id = ?", (hold_id,))
                     conn.commit()
                     self.checkout_options()
@@ -214,67 +214,64 @@ class ReturnRegister:
 
     def return_process(self):
         with self.db_connector.connect("sales") as conn:
-            cur = conn.cursor()
             print("\n==返品処理==")
             transaction_id = input("トランザクションIDを入力してください: ")
             if transaction_id == "":
                 back_to_main()
             else:
-                # 変更対象のsales_typeを確認　1.販売（返品可能）, 2.返品データ,  3.返品済み（返品の元取引）
-                cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
-                row = cur.fetchone()
-                if row:
-                    sales_type = row[0]
-                    if sales_type == 3:
-                        print("すでに返品済みの取引です")
-                        return self.return_process()
-                    elif sales_type != 1:
-                        print("返品処理は売上データ以外に実行できません")
-                        return self.return_process()
-                else:
-                    print("\nトランザクションIDが見つかりません")
-                    return self.return_process()
-                return_type = input("1.全返品\n2.一部返品\n>")
-
-                if return_type == "1":
-                    self.full_return(transaction_id)
-                elif return_type == "2":
-                    self.partial_return(transaction_id)
-                else:
-                    print("無効な入力です。")
-                    return
-
-    # TODO：データベースのコネクト処理を共通化して整理する（現在のままだとデータベースロックが発生する）
-    # TODO：返品処理のコミットタイミングを明確化する
-
-    def full_return(self, transaction_id):
-        with self.db_connector.connect("sales") as conn:
-            try:  # 全アイテム取得 => sales_itemテーブルマイナス処理 => Transactionテーブルマイナス処理・元取引ステータスを3に（返品済み取引）
-                items = self._get_all_sales_items(transaction_id, conn)
-                self._process_items(transaction_id, conn, items, full_return=True)
-                self._change_origin_Transaction_status(transaction_id, 3, conn)
-                row = self._get_Transaction_data(transaction_id, conn)
-                # self._register_negative_transaction(transaction_id, conn)
-                self._register_refund_transaction(row[0], row[1], row[2], row[3], conn)
+                sales_type = self._validate_transaction_type(transaction_id, conn)
+                if sales_type is None:
+                    self.return_process()
+            return_type = input("1.全返品\n2.一部返品\n>")
+            if return_type == "1":
+                self._process_full_return(transaction_id, conn)
                 conn.commit()
-            except Exception as e:
-                conn.rollback()
-                print("返品処理に失敗しました", e)
+            elif return_type == "2":
+                self._process_partial_return(transaction_id, conn)
+                conn.commit()
+            else:
+                print("無効な入力です。")
+            self.return_process()
 
-    def partial_return(self, transaction_id):
-        with self.db_connector.connect("sales") as conn:
-            try:  # 全アイテム取得 => 返品アイテム選択 => sales_itemテーブルマイナス処理・Transactionテーブルマイナス処理・元取引ステータスを3に（返品済み取引）
-                items = self._get_all_sales_items(transaction_id, conn)  # 全アイテムがitemsリストに入ってる
-                items = self._select_partial_items(items)  # 選択した返品商品がitemsリストに入ってる
-                self._process_items(transaction_id, conn, items, full_return=False)
-                self._change_origin_Transaction_status(transaction_id, 3, conn)
-            except Exception as e:
-                conn.rollback()
-                print("返品処理に失敗しました", e)
+    def _validate_transaction_type(self, transaction_id, conn):
+        # 変更対象のsales_typeを確認　1.販売（返品可能）, 2.返品データ,  3.返品済み（返品の元取引）
+        cur = conn.cursor()
+        cur.execute("SELECT sales_type FROM Transactions WHERE transaction_id = ?", (transaction_id,))
+        row = cur.fetchone()
+        if row:
+            sales_type = row[0]
+            if sales_type == 3:
+                print("すでに返品済みの取引です")
+                return None
+            elif sales_type != 1:
+                print("返品処理は売上データ以外に実行できません")
+                return None
+            return sales_type
+        else:
+            print("\nトランザクションIDが見つかりません")
+            return None
+
+    def _process_full_return(self, transaction_id, conn):
+        try:
+            items = self._get_all_sales_items(transaction_id, conn)
+            self._process_return(transaction_id, conn, items, full_return=True)
+        except Exception as e:
+            conn.rollback()
+            print("返品処理に失敗しました", e)
+
+    def _process_partial_return(self, transaction_id, conn):
+        try:
+            items = self._get_all_sales_items(transaction_id, conn)
+            items = self._select_partial_items(items)  # 返品商品を選択
+            self._process_return(transaction_id, conn, items, full_return=False)
+        except Exception as e:
+            conn.rollback()
+            print("返品処理に失敗しました", e)
 
     def _get_all_sales_items(self, transaction_id, conn):
         cur = conn.cursor()
-        cur.execute(  # transaction_idをキーにsales_itemテーブルから全アイテム取得
+        # sales_itemsテーブルからtransaction_idに紐づく全ての商品を取得する
+        cur.execute(
             "SELECT id, JAN, product_name, unit_price, tax_rate, amount FROM sales_item WHERE transaction_id = ?",
             (transaction_id,),
         )
@@ -288,7 +285,7 @@ class ReturnRegister:
         selected_indexes = [int(x) - 1 for x in selected_items.split(",")]
         return [items[i] for i in selected_indexes]
 
-    def _process_items(self, transaction_id, conn, items, full_return):
+    def _process_return(self, transaction_id, conn, items, full_return):
         cur = conn.cursor()
         unit_price_sum, tax_sum, amount_sum = 0, 0, 0
         for item in items:
@@ -302,49 +299,33 @@ class ReturnRegister:
         # 税額の合計を四捨五入
         tax_sum = int(Decimal(str(tax_sum)).quantize(Decimal("0"), ROUND_HALF_UP))
 
-        if not full_return:
-            self._register_refund_transaction(len(items), tax_sum, unit_price_sum, amount_sum, conn)
-            conn.commit()
+        self._change_origin_transaction_status(transaction_id, 3, conn)
+        row = self._get_transaction_data(transaction_id, conn)
+        self._register_refund_transaction(row[0], tax_sum, unit_price_sum, amount_sum, conn)
 
-    def _change_origin_Transaction_status(self, transaction_id, sales_type, conn):
+    def _change_origin_transaction_status(self, transaction_id, sales_type, conn):
         cur = conn.cursor()
-        cur.execute(  # 元取引のsales_typeを返品済みに変更
+        cur.execute(
             "UPDATE Transactions SET sales_type = ? WHERE transaction_id = ?",
             (sales_type, transaction_id),
         )
 
-    def _get_Transaction_data(self, transaction_id, conn):
+    def _get_transaction_data(self, transaction_id, conn):
         cur = conn.cursor()
-        cur.execute(  # 元取引のTransactionsテーブルデータ取得
+        cur.execute(
             "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
             (transaction_id,),
         )
         return cur.fetchone()
 
-    #  _change_origin_Transaction_statusと_get_Transaction_dataに分割したため、不要になったメソッド
-    # def _register_negative_transaction(self, transaction_id, conn):
-    #     cur = conn.cursor()
-    #     cur.execute(  # 元取引のsales_typeを返品済みに変更
-    #         "UPDATE Transactions SET sales_type = 3 WHERE transaction_id = ?",
-    #         (transaction_id,),
-    #     )
-    #     cur.execute(  # 元取引のTransactionsテーブルデータ取得
-    #         "SELECT purchase_points, total_tax_amount, total_base_price, total_amount FROM Transactions WHERE transaction_id = ?",
-    #         (transaction_id,),
-    #     )
-    #     row = cur.fetchone()
-    #     self._register_refund_transaction(row[0], row[1], row[2], row[3], conn)
-
     def _register_refund_transaction(self, purchase_points, total_tax_amount, total_base_price, total_amount, conn):
         cur = conn.cursor()
-        cur.execute(  # 元取引データを基にマイナスデータをTransactionsテーブルに挿入
+        cur.execute(
             """INSERT INTO Transactions (sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change)
                     VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)""",
             (2, g.staffCode, -purchase_points, -total_tax_amount, -total_base_price, -total_amount, 0, total_amount),
         )
         print(f"返金額: {total_amount}円")
-        conn.commit()
-        return
 
 
 class TransactionHistory:
