@@ -333,80 +333,96 @@ class TransactionHistory:
         self.db_connector = DatabaseConnector()
 
     def search_transactions(self):
+        mode, transaction_id = self._select_mode()
         with self.db_connector.connect("sales") as conn:
-            query = self._build_query()
+            query = self._build_query(mode, transaction_id)
             cur = conn.cursor()
             cur.execute(query)
             rows = cur.fetchall()
-            self._display_transactions(rows)
+            self._display_transactions(rows, mode)
 
-    def _build_query(self):
-        print("検索条件を入力してください。")
-        conditions = []
+    def _select_mode(self):
+        while True:
+            mode = input("モードを選択してください (1: Transactionsのみ, 2: Transactions + sales_items): ")
+            if mode in ["1", "2"]:
+                if mode == "2":
+                    transaction_id = input("トランザクションIDを入力してください (空白の場合は全件表示): ")
+                else:
+                    transaction_id = ""
+                return int(mode), transaction_id
+            print("無効な入力です。1または2を入力してください。")
 
-        transaction_id = input("トランザクションID (空白の場合は全件検索): ")
-        if transaction_id:
-            conditions.append(f"transaction_id = {transaction_id}")
-
-        sales_type = input("売上タイプ (1: 通常売上, 2: 返品, 空白: 全て): ")
-        if sales_type:
-            conditions.append(f"sales_type = {sales_type}")
-
-        date_from = input("開始日 (YYYY-MM-DD, 空白の場合は指定なし): ")
-        date_to = input("終了日 (YYYY-MM-DD, 空白の場合は指定なし): ")
-        if date_from and date_to:
-            conditions.append(f"date BETWEEN '{date_from}' AND '{date_to}'")
-        elif date_from:
-            conditions.append(f"date >= '{date_from}'")
-        elif date_to:
-            conditions.append(f"date <= '{date_to}'")
-
-        staffCode = input("スタッフコード (空白の場合は全て): ")
-        if staffCode:
-            conditions.append(f"staffCode = '{staffCode}'")
-
-        where_clause = " AND ".join(conditions) if conditions else "1=1"
-        query = f"SELECT * FROM Transactions WHERE {where_clause} ORDER BY date ASC"
+    def _build_query(self, mode, transaction_id):
+        if mode == 1:
+            print("検索条件を入力してください。")
+            conditions = []
+            if transaction_id:
+                conditions.append(f"transaction_id = {transaction_id}")
+            sales_type = input("売上タイプ (1: 通常売上, 2: 返品, 空白: 全て): ")
+            if sales_type:
+                conditions.append(f"sales_type = {sales_type}")
+            date_from = input("開始日 (YYYY-MM-DD, 空白の場合は指定なし): ")
+            date_to = input("終了日 (YYYY-MM-DD, 空白の場合は指定なし): ")
+            if date_from and date_to:
+                conditions.append(f"date BETWEEN '{date_from}' AND '{date_to}'")
+            elif date_from:
+                conditions.append(f"date >= '{date_from}'")
+            elif date_to:
+                conditions.append(f"date <= '{date_to}'")
+            staffCode = input("スタッフコード (空白の場合は全て): ")
+            if staffCode:
+                conditions.append(f"staffCode = '{staffCode}'")
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            query = f"SELECT * FROM Transactions WHERE {where_clause} ORDER BY date ASC"
+        else:
+            if transaction_id:
+                query = f"SELECT * FROM Transactions WHERE transaction_id = {transaction_id} ORDER BY date ASC"
+            else:
+                query = "SELECT * FROM Transactions ORDER BY date ASC"
         return query
 
-    def _display_transactions(self, rows):
+    def _display_transactions(self, rows, mode):
+        self._print_header(mode)
+
         if not rows:
             print("検索結果はありません。")
             return
 
-        print(
-            "{:<6} {:<9} {:<13} {:8} {:<8} {:<7} {:<6} {:<6} {:<7}".format(
-                "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "税込価格", "釣銭"
-            )
-        )
-        print("-" * 110)
-
         for row in rows:
-            (
-                transaction_id,
-                sales_type,
-                date,
-                staffCode,
-                purchase_points,
-                total_tax_amount,
-                total_base_price,
-                total_amount,
-                deposit,
-                change,
-            ) = row
-            print(
-                "{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
-                    transaction_id,
-                    sales_type,
-                    date,
-                    staffCode,
-                    purchase_points,
-                    total_tax_amount,
-                    total_base_price,
-                    total_amount,
-                    deposit,
-                )
-            )
-            back_to_main()
+            if mode == 1:
+                (transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount, total_base_price, total_amount, deposit, change) = row
+                print("{:<10} {:<10} {:<20} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format(
+                    transaction_id, sales_type, date, staffCode, purchase_points, total_tax_amount,
+                    total_base_price, total_amount, deposit
+                ))
+            else:
+                transaction_id = row[0]
+                print("{:<10}".format(transaction_id))
+                self._display_transaction_items(transaction_id)
+            print("-" * 110)
 
+        back_to_main()
+
+    def _display_transaction_items(self, transaction_id):
+        with self.db_connector.connect("sales") as conn:
+            cur = conn.cursor()
+            cur.execute(f"SELECT * FROM sales_item WHERE transaction_id = {transaction_id}")
+            items = cur.fetchall()
+
+            if not items:
+                print("商品データがありません。")
+                return
+
+            print("{:<15} {:<40} {:<10} {:<10} {:<10}".format("JAN", "商品名", "単価", "税率", "数量"))
+            for item in items:
+                jan, product_name, unit_price, tax_rate, amount = item[2:]
+                print("{:<15} {:<40} {:<10} {:<10} {:<10}".format(jan, product_name, unit_price, tax_rate, amount))
+
+    def _print_header(self, mode):
+        if mode == 1:
+            print("{:<6} {:<9} {:<13} {:8} {:<8} {:<7} {:<6} {:<6} {:<7}".format(
+                "ID", "売上タイプ", "日付", "スタッフコード", "点数", "税額", "税抜価格", "税込価格", "釣銭"
+            ))
+        else:
+            print("{:<10}".format("トランザクションID"))
         print("-" * 110)
