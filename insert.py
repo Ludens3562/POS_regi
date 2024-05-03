@@ -147,6 +147,18 @@ class table_master:
                         purchase_items TEXT)
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE cash_registers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        date TEXT NOT NULL,
+                        staffCode INTEGER NOT NULL,
+                        total_sales INTEGER NOT NULL,
+                        cash_amount INTEGER NOT NULL,
+                        difference INTEGER NOT NULL,
+                        reason TEXT)
+                    """
+                )
                 cur.execute("COMMIT TRANSACTION")
             except sqlite3.Error as e:
                 cur.execute("ROLLBACK TRANSACTION")

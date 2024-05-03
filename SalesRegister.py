@@ -426,3 +426,112 @@ class TransactionHistory:
         else:
             print("{:<10}".format("トランザクションID"))
         print("-" * 110)
+
+
+class CashRegister:
+    def __init__(self, sales_register):
+        self.sales_register = sales_register
+        self.db_connector = sales_register.db_connector
+
+    def close_register(self):
+        print("\n==レジ締め==")
+        self.display_daily_transaction_counts()
+        total_sales = self.calculate_total_sales()
+        cash_amount = self.count_cash()
+        shortage_or_surplus = cash_amount - total_sales
+
+        print("\n==レジ締め==")
+        print(f"総売上金額: {total_sales}円")
+        print(f"現金残高: {cash_amount}円")
+
+        if shortage_or_surplus == 0:
+            print("締めは問題ありません")
+            self.record_cash_register(total_sales, cash_amount, shortage_or_surplus)
+        elif shortage_or_surplus > 0:
+            print(f"過剰金額: {shortage_or_surplus}円")
+            reason = self.handle_cash_difference(shortage_or_surplus, cash_amount)
+            self.record_cash_register(total_sales, cash_amount, shortage_or_surplus, reason)
+        else:
+            print(f"不足金額: {abs(shortage_or_surplus)}円")
+            reason = self.handle_cash_difference(shortage_or_surplus, cash_amount)
+            self.record_cash_register(total_sales, cash_amount, shortage_or_surplus, reason)
+
+        self.display_daily_transaction_counts()
+
+    def intermediate_reconciliation(self):
+        total_sales = self.calculate_total_sales()
+        cash_amount = self.count_cash()
+        shortage_or_surplus = cash_amount - total_sales
+
+        print("\n=中間精算=")
+        print(f"総売上金額: {total_sales}円")
+        print(f"現金残高: {cash_amount}円")
+
+        if shortage_or_surplus == 0:
+            print("金額は正しいです")
+        elif shortage_or_surplus > 0:
+            print(f"過剰金額: {shortage_or_surplus}円")
+        else:
+            print(f"不足金額: {abs(shortage_or_surplus)}円")
+
+    def calculate_total_sales(self):
+        with self.db_connector.connect("sales") as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT SUM(total_amount)
+                FROM Transactions
+                WHERE DATE(date) = DATE('now')
+            """)
+            result = cur.fetchone()[0]
+            return result if result else 0
+
+    def count_cash(self):
+        print("\n金種入力:")
+        cash_amount = 0
+        denominations = [10000, 5000, 2000, 1000, 500, 100, 50, 10, 5, 1]
+        for denomination in denominations:
+            count = input(f"{denomination}円の枚数: ")
+            if count.isdigit():
+                cash_amount += int(count) * denomination
+        return cash_amount
+
+    def handle_cash_difference(self, shortage_or_surplus, cash_amount):
+        while True:
+            choice = input("金額の差異がありました。再入力しますか？ (y/n) ")
+            if choice.lower() == "y":
+                cash_amount = self.count_cash()
+                shortage_or_surplus = cash_amount - self.calculate_total_sales()
+                print(f"現金残高: {cash_amount}円")
+                if shortage_or_surplus == 0:
+                    print("締めは問題ありません")
+                    return None
+                elif shortage_or_surplus > 0:
+                    print(f"過剰金額: {shortage_or_surplus}円")
+                else:
+                    print(f"不足金額: {abs(shortage_or_surplus)}円")
+            elif choice.lower() == "n":
+                reason = input("差異の理由を入力してください: ")
+                return reason
+            else:
+                print("無効な入力です。'y' または 'n' を入力してください。")
+
+    def record_cash_register(self, total_sales, cash_amount, difference, reason=None):
+        with self.db_connector.connect("sales") as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO cash_registers (date, staffCode, total_sales, cash_amount, difference, reason)
+                VALUES (DATE('now'), ?, ?, ?, ?, ?)
+            """, (g.staffCode, total_sales, cash_amount, difference, reason))
+            conn.commit()
+
+    def display_daily_transaction_counts(self):
+        with self.db_connector.connect("sales") as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT
+                    (SELECT COUNT(*) FROM Transactions WHERE DATE(date) = DATE('now') AND sales_type = 1) AS sales_count,
+                    (SELECT COUNT(*) FROM Transactions WHERE DATE(date) = DATE('now') AND sales_type = 2) AS refund_count
+            """)
+            sales_count, refund_count = cur.fetchone()
+            print(f"当日の売上取引件数: {sales_count}")
+            print(f"当日の返品件数: {refund_count}")
